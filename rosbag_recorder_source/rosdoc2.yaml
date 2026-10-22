@@ -1,0 +1,23 @@
+## rosdoc2 configuration; see https://github.com/ros-infrastructure/rosdoc2.
+## The headers keep comments to constraints the code does not show, so undocumented
+## members are not reported.
+type: 'rosdoc2 config'
+version: 1
+
+---
+
+settings:
+    generate_package_index: true
+    always_run_doxygen: false
+    always_run_sphinx_apidoc: false
+builders:
+    - doxygen: {
+        name: 'rosbag_recorder_source Public C/C++ API',
+        output_dir: 'generated/doxygen',
+        extra_doxyfile_statements: ['WARN_IF_UNDOCUMENTED = NO']
+    }
+    - sphinx: {
+        name: 'rosbag_recorder_source',
+        doxygen_xml_directory: 'generated/doxygen/xml',
+        output_dir: ''
+    }
