@@ -22,4 +22,6 @@ float64 remaining_min
 string[] warnings
 # Milliseconds the recorder spent on the previous 1 Hz tick (graph, health, preflight).
 float64 tick_ms
+# Ticks since the node started that re-read the graph; it re-reads only when the graph changed.
+uint64 graph_reads
 TopicHealth[] topics

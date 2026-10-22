@@ -528,6 +528,7 @@ private:
     const bool graph_changed = graph_event_->check_and_clear() || graph_dirty_;
     graph_dirty_ = false;
     if (graph_changed) {
+      ++graph_reads_;
       clock_published_ = count_publishers("/clock") > 0;
     }
     if (clock_published_) {
@@ -555,6 +556,7 @@ private:
     h.state = state_;
     h.output_dir = output_dir_;
     h.tick_ms = tick_ms_;
+    h.graph_reads = graph_reads_;
     const auto free = disk_free_gb(output_dir_);
     h.disk_free_gb = free.value_or(std::numeric_limits<double>::quiet_NaN());
     h.remaining_min = std::numeric_limits<double>::quiet_NaN();
@@ -1178,6 +1180,7 @@ private:
   rclcpp::Event::SharedPtr graph_event_;
   bool graph_dirty_{true};
   bool clock_published_{false};
+  std::uint64_t graph_reads_{0};
   std::map<std::string, std::pair<fs::file_time_type, bool>> profile_list_;
 
   std::shared_mutex writer_mutex_;
