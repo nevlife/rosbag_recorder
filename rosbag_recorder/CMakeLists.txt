@@ -87,6 +87,13 @@ if(BUILD_TESTING)
   install(TARGETS rosbag_recorder_counter_source LIBRARY DESTINATION lib)
   pluginlib_export_plugin_description_file(rosbag_recorder_source test/counter_source.xml)
 
+  add_executable(many_publishers test/many_publishers.cpp)
+  target_link_libraries(many_publishers rclcpp::rclcpp ${sensor_msgs_TARGETS})
+  install(TARGETS many_publishers DESTINATION lib/${PROJECT_NAME})
+
+  add_launch_test(test/test_scale.launch.py
+    TIMEOUT 600
+    ENV ROS_DOMAIN_ID=89)
   add_launch_test(test/test_record.launch.py
     TIMEOUT 180
     ENV ROS_DOMAIN_ID=87 TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/data)

@@ -21,7 +21,6 @@ namespace rosbag_recorder
 namespace
 {
 
-constexpr std::size_t kArrivals = 4000;
 constexpr std::size_t kSizes = 50;
 constexpr double kIssueHold = 3.0;
 constexpr std::size_t kLatched = 100;
@@ -93,7 +92,8 @@ std::optional<std::string> Stream::receive(
 {
   const std::lock_guard<std::mutex> lock(mutex_);
   arrivals_.push_back(mono);
-  if (arrivals_.size() > kArrivals) {
+  const double keep = window_for(spec.hz) + 1.0;
+  while (arrivals_.front() < mono - keep) {
     arrivals_.pop_front();
   }
   sizes_.push_back(message.size());

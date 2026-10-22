@@ -20,4 +20,6 @@ float64 write_mbps
 # Minutes until disk_stop_gb at the current write rate; NaN when unknown.
 float64 remaining_min
 string[] warnings
+# Milliseconds the recorder spent on the previous 1 Hz tick (graph, health, preflight).
+float64 tick_ms
 TopicHealth[] topics

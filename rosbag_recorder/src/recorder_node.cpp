@@ -151,6 +151,7 @@ public:
     health_pub_ = create_publisher<Health>(kHealthTopic, health_qos());
     marker_pub_ = create_publisher<Marker>(kMarkerTopic, marker_qos());
     services();
+    graph_event_ = get_graph_event();
     timer_ = create_wall_timer(std::chrono::seconds(1), [this] {tick();}, control_group_);
 
     if (!profile.empty()) {
@@ -306,7 +307,7 @@ private:
     }
     state_ = Health::PREVIEW;
     message_ = "selected " + name;
-    subscribe_pending();
+    subscribe_pending(true);
     preflight_ = preflight();
     RCLCPP_INFO(
       get_logger(), "profile %s: %zu topics, %zu sources", name.c_str(), topics.size(),
@@ -360,19 +361,23 @@ private:
     state_ = Health::IDLE;
   }
 
-  void subscribe_pending()
+  // Graph queries cost O(graph) each; they run when the graph changed, not every tick.
+  void subscribe_pending(bool graph_changed)
   {
+    for (auto & loaded : sources_) {
+      auto & streams = loaded.sink->streams();
+      for (std::size_t i = 0; i < streams.size(); ++i) {
+        streams[i]->publishers = loaded.plugin->publishers(i);
+      }
+    }
+    if (!graph_changed) {
+      return;
+    }
     bool pending = false;
     for (auto & [name, s] : streams_) {
       if (s->spec.source.empty()) {
         s->publishers = static_cast<std::uint32_t>(count_publishers(name));
         pending = pending || (!s->subscription && s->error.empty());
-      }
-    }
-    for (auto & loaded : sources_) {
-      auto & streams = loaded.sink->streams();
-      for (std::size_t i = 0; i < streams.size(); ++i) {
-        streams[i]->publishers = loaded.plugin->publishers(i);
       }
     }
     if (!pending) {
@@ -519,12 +524,18 @@ private:
 
   void tick()
   {
-    if (count_publishers("/clock") > 0) {
+    const double begin = mono_now();
+    const bool graph_changed = graph_event_->check_and_clear() || graph_dirty_;
+    graph_dirty_ = false;
+    if (graph_changed) {
+      clock_published_ = count_publishers("/clock") > 0;
+    }
+    if (clock_published_) {
       sim_until_ = wall_now() + 5.0;
     }
     sim_time_ = wall_now() < sim_until_;
     if (profile_) {
-      subscribe_pending();
+      subscribe_pending(graph_changed);
     }
     report();
     if (state_ == Health::WAITING) {
@@ -532,6 +543,7 @@ private:
     } else if (state_ == Health::PREVIEW) {
       preflight_ = preflight();
     }
+    tick_ms_ = (mono_now() - begin) * 1000.0;
   }
 
   void report()
@@ -542,6 +554,7 @@ private:
     h.stamp = now();
     h.state = state_;
     h.output_dir = output_dir_;
+    h.tick_ms = tick_ms_;
     const auto free = disk_free_gb(output_dir_);
     h.disk_free_gb = free.value_or(std::numeric_limits<double>::quiet_NaN());
     h.remaining_min = std::numeric_limits<double>::quiet_NaN();
@@ -1073,15 +1086,26 @@ private:
     res.message = message_;
     res.preflight = preflight_;
     const ProfileStore store((fs::path(config_dir_) / "profiles").string());
+    std::map<std::string, std::pair<fs::file_time_type, bool>> listed;
     for (const auto & name : store.names()) {
-      try {
-        if (!store.load(name).abstract) {
-          res.profiles.push_back(name);
+      const auto mtime = fs::last_write_time(fs::path(config_dir_) / "profiles" / (name + ".yaml"));
+      const auto cached = profile_list_.find(name);
+      bool listable = false;
+      if (cached != profile_list_.end() && cached->second.first == mtime) {
+        listable = cached->second.second;
+      } else {
+        try {
+          listable = !store.load(name).abstract;
+        } catch (const ConfigError & e) {
+          RCLCPP_WARN(get_logger(), "%s", e.what());
         }
-      } catch (const ConfigError & e) {
-        RCLCPP_WARN(get_logger(), "%s", e.what());
+      }
+      listed[name] = {mtime, listable};
+      if (listable) {
+        res.profiles.push_back(name);
       }
     }
+    profile_list_ = std::move(listed);
   }
 
   void on_catalog_diff(srv::CatalogDiff::Response & res)
@@ -1150,6 +1174,11 @@ private:
   bool sim_time_{false};
   double sim_until_{0.0};
   Health last_health_;
+  double tick_ms_{0.0};
+  rclcpp::Event::SharedPtr graph_event_;
+  bool graph_dirty_{true};
+  bool clock_published_{false};
+  std::map<std::string, std::pair<fs::file_time_type, bool>> profile_list_;
 
   std::shared_mutex writer_mutex_;
   std::shared_ptr<rosbag2_cpp::Writer> writer_;
