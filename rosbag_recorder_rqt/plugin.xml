@@ -1,0 +1,12 @@
+<library path="rosbag_recorder_rqt">
+  <class name="RosbagRecorder" type="rosbag_recorder_rqt.recorder.RecorderPlugin" base_class_type="rqt_gui_py::Plugin">
+    <description>Run rosbag_recorder and watch the quality of the recorded topics.</description>
+    <qtgui>
+      <group>
+        <label>Logging</label>
+      </group>
+      <label>Rosbag Recorder</label>
+      <statustip>Start, stop and mark recordings; live topic health.</statustip>
+    </qtgui>
+  </class>
+</library>
