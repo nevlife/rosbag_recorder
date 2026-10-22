@@ -99,6 +99,32 @@ launch test that records a 4 MiB topic at 10 Hz with other topics and the counte
 checks that each topic has one subscription, and reads the bag back with `ros2 bag info` and,
 when it is on `PYTHONPATH`, `rosbag2_dataset`.
 
+Two tests keep the node and the rqt plugin responsive with many topics. Their budgets are
+environment variables (`SCALE_*`, `RQT_PERF_*`) so a slower board can set its own.
+
+| Test | Setup | Budget |
+| --- | --- | --- |
+| `test_scale.launch.py` | 500 IMU topics at 10 Hz from one process, preview for 10 s, recording for 150 s | tick p50 < 6 ms and p99 < 30 ms, `status` call p99 < 20 ms, RSS growth after warm-up < 20 MB |
+| `rosbag_recorder_rqt/test/test_rqt_perf.py` | `Health` with 500 topics of about 180-character names at 1 Hz for 30 s, offscreen; a tab round trip and Mark every 0.2 s | first table filled < 2 s, update p99 < 50 ms, longest event-loop gap and tab switch with Mark < 100 ms |
+
+Measured on reserved cores (`pinned_run.py`, CPUs 8, 10, 12, 14 of an x86 desktop, Fast DDS,
+Jazzy) before and after the changes that made these budgets hold:
+
+| Value | Before | After |
+| --- | --- | --- |
+| Node tick in preview, p50 / p99 | 8.3 / 15.7 ms | 3.5 / 3.8 ms |
+| Node tick while recording, p50 / p99 | 4.1 / 16.4 ms | 2.0 / 7.4 ms |
+| `status` call, p50 / p99 | 1.8 / 81.7 ms | 0.9 / 1.4 ms |
+| Node RSS growth over 150 s of recording | 2.2 MB | -0.6 MB |
+| rqt table update, p50 / p99 | 13 346 ms (every update) | 4.1 / 8.7 ms |
+| rqt longest event-loop gap | 13 353 ms | 30 ms |
+| rqt tab switch and Mark | 5.5 ms (no tabs) | 28 ms |
+| rqt first table filled | 0.11 s | 0.12 s |
+
+Before, every table update set each cell's text with the columns in ResizeToContents, which
+measures the column again per cell; the node counted the publishers of every topic on every
+tick and parsed every profile file on every `status` call.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
