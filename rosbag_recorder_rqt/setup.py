@@ -12,7 +12,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='pgw',
+    maintainer='nevlife',
     maintainer_email='nevlife000720@gmail.com',
     description='rqt plugin for rosbag_recorder.',
     license='MIT',

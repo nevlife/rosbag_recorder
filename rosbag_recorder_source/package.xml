@@ -4,7 +4,7 @@
   <name>rosbag_recorder_source</name>
   <version>0.1.0</version>
   <description>Plugin interface for recording data that is not a ROS topic with rosbag_recorder.</description>
-  <maintainer email="nevlife000720@gmail.com">pgw</maintainer>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

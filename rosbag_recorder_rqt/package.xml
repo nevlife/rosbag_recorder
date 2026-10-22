@@ -4,7 +4,7 @@
   <name>rosbag_recorder_rqt</name>
   <version>0.1.0</version>
   <description>rqt plugin to run rosbag_recorder: profile, start, stop, pause, markers, preflight and the live topic health table.</description>
-  <maintainer email="nevlife000720@gmail.com">pgw</maintainer>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
   <license>MIT</license>
 
   <exec_depend>python_qt_binding</exec_depend>

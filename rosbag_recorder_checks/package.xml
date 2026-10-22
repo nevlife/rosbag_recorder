@@ -4,7 +4,7 @@
   <name>rosbag_recorder_checks</name>
   <version>0.1.0</version>
   <description>Value check plugin interface of rosbag_recorder and the built-in checks: header stamp, IMU, GNSS, TF, point cloud.</description>
-  <maintainer email="nevlife000720@gmail.com">pgw</maintainer>
+  <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
