@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "rclcpp/qos.hpp"
+#include "rclcpp/version.h"
 #include "rosbag2_cpp/writer.hpp"
 #include "rosbag2_storage/storage_options.hpp"
 #include "rosbag2_storage/topic_metadata.hpp"
@@ -56,6 +57,27 @@ inline void set_custom_data(
 #else
   (void)options;
   (void)data;
+#endif
+}
+
+inline auto service_qos()
+{
+#if RCLCPP_VERSION_GTE(21, 0, 0)
+  return rclcpp::ServicesQoS();
+#else
+  return rmw_qos_profile_services_default;
+#endif
+}
+
+// Humble's Writer cannot split on request; its SequentialWriter keeps split_bagfile protected.
+inline bool split(rosbag2_cpp::Writer & writer)
+{
+#if ROSBAG_RECORDER_ROSBAG2_MINOR >= 22
+  writer.split_bagfile();
+  return true;
+#else
+  (void)writer;
+  return false;
 #endif
 }
 

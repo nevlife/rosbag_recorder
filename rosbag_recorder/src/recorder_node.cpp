@@ -211,7 +211,7 @@ private:
 
   void services()
   {
-    const auto qos = rclcpp::ServicesQoS();
+    const auto qos = service_qos();
     select_srv_ = create_service<srv::Select>(
       "~/select", [this](const std::shared_ptr<srv::Select::Request> req,
       std::shared_ptr<srv::Select::Response> res) {on_select(*req, *res);},
@@ -253,7 +253,7 @@ private:
       name, [f](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
       std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
         res->success = f(res->message);
-      }, rclcpp::ServicesQoS(), control_group_);
+      }, service_qos(), control_group_);
   }
 
   bool session_open()
@@ -308,7 +308,8 @@ private:
     message_ = "selected " + name;
     subscribe_pending();
     preflight_ = preflight();
-    RCLCPP_INFO(get_logger(), "profile %s: %zu topics, %zu sources", name.c_str(), topics.size(),
+    RCLCPP_INFO(
+      get_logger(), "profile %s: %zu topics, %zu sources", name.c_str(), topics.size(),
       profile_->sources.size());
   }
 
@@ -452,7 +453,8 @@ private:
           checks.push_back(check);
         }
       } catch (const std::exception & e) {
-        RCLCPP_WARN(get_logger(), "check %s on %s off: %s", name.c_str(), s.spec.name.c_str(),
+        RCLCPP_WARN(
+          get_logger(), "check %s on %s off: %s", name.c_str(), s.spec.name.c_str(),
           e.what());
       }
     }
@@ -629,18 +631,26 @@ private:
     if (!free) {
       out.push_back(result(CheckResult::WARN, "disk free space unknown"));
     } else if (*free < o.disk_stop_gb) {
-      out.push_back(result(CheckResult::ERROR, "disk free " + fixed(*free, 0) +
-        " GB, below the stop limit " + fixed(o.disk_stop_gb, 0) + " GB"));
+      out.push_back(
+        result(
+          CheckResult::ERROR, "disk free " + fixed(*free, 0) +
+          " GB, below the stop limit " + fixed(o.disk_stop_gb, 0) + " GB"));
     } else if (*free < o.disk_warn_gb) {
-      out.push_back(result(CheckResult::WARN, "disk free " + fixed(*free, 0) +
-        " GB, below the warning limit " + fixed(o.disk_warn_gb, 0) + " GB"));
+      out.push_back(
+        result(
+          CheckResult::WARN, "disk free " + fixed(*free, 0) +
+          " GB, below the warning limit " + fixed(o.disk_warn_gb, 0) + " GB"));
     } else {
-      out.push_back(result(CheckResult::OK, "disk free " + fixed(*free, 0) + " GB (" +
-        output_dir_ + ")"));
+      out.push_back(
+        result(
+          CheckResult::OK, "disk free " + fixed(*free, 0) + " GB (" +
+          output_dir_ + ")"));
     }
     if (!profile_->unknown_topics.empty()) {
-      out.push_back(result(CheckResult::WARN, std::to_string(profile_->unknown_topics.size()) +
-        " topics not in the catalog, no reference rate: " + listed(profile_->unknown_topics)));
+      out.push_back(
+        result(
+          CheckResult::WARN, std::to_string(profile_->unknown_topics.size()) +
+          " topics not in the catalog, no reference rate: " + listed(profile_->unknown_topics)));
     }
     std::size_t required = 0;
     std::vector<std::string> no_type, silent, abnormal;
@@ -660,18 +670,24 @@ private:
     if (required > 0) {
       const std::string count =
         std::to_string(required - missing.size()) + "/" + std::to_string(required);
-      out.push_back(missing.empty() ?
+      out.push_back(
+        missing.empty() ?
         result(CheckResult::OK, "required topics " + count + " ok") :
-        result(CheckResult::WARN, "required topics " + count + " ok, not ready: " +
-        listed(missing)));
+        result(
+          CheckResult::WARN, "required topics " + count + " ok, not ready: " +
+          listed(missing)));
     }
     if (!no_type.empty()) {
-      out.push_back(result(CheckResult::WARN, "message type not available (source the "
-        "workspace that defines it): " + listed(no_type)));
+      out.push_back(
+        result(
+          CheckResult::WARN, "message type not available (source the "
+          "workspace that defines it): " + listed(no_type)));
     }
     if (!silent.empty()) {
-      out.push_back(result(CheckResult::INFO, std::to_string(silent.size()) + "/" +
-        std::to_string(last_health_.topics.size()) + " topics without data: " + listed(silent)));
+      out.push_back(
+        result(
+          CheckResult::INFO, std::to_string(silent.size()) + "/" +
+          std::to_string(last_health_.topics.size()) + " topics without data: " + listed(silent)));
     }
     if (!abnormal.empty()) {
       out.push_back(result(CheckResult::WARN, "value issues: " + listed(abnormal)));
@@ -688,7 +704,8 @@ private:
           absent.push_back(f);
         }
       }
-      out.push_back(absent.empty() ?
+      out.push_back(
+        absent.empty() ?
         result(CheckResult::OK, "TF frames present: " + listed(o.required_frames)) :
         result(CheckResult::WARN, "TF frames missing: " + listed(absent)));
     }
@@ -758,7 +775,8 @@ private:
     storage.max_cache_size = static_cast<std::uint64_t>(o.max_cache_mb) * 1024 * 1024;
     storage.storage_preset_profile = o.preset();
     storage.storage_config_uri = o.storage_config_uri;
-    set_custom_data(storage, {{"rosbag_recorder.session_id", fs::path(path).filename().string()},
+    set_custom_data(
+      storage, {{"rosbag_recorder.session_id", fs::path(path).filename().string()},
         {"rosbag_recorder.profile", profile_->name}});
     std::shared_ptr<rosbag2_cpp::Writer> writer;
     if (o.storage == "sqlite3" && o.compression == "zstd") {
@@ -1035,7 +1053,10 @@ private:
         message = "not recording";
         return false;
       }
-      writer_->split_bagfile();
+      if (!rosbag_recorder::split(*writer_)) {
+        message = "this rosbag2 cannot split on request";
+        return false;
+      }
     }
     mark("split", "bag file split", "user", "");
     message = "split";

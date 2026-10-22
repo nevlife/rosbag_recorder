@@ -73,22 +73,30 @@ TEST(Rate, Statuses)
   const auto ok = evaluate_rate(10.0, ticks(0, 0.1, 50), 50, 5.0, 0.8, 1, false, false);
   EXPECT_EQ(ok.status, TopicHealth::OK);
   EXPECT_NEAR(ok.hz, 10.0, 0.01);
-  EXPECT_EQ(evaluate_rate(10.0, ticks(0, 0.2, 25), 25, 5.0, 0.8, 1, false, false).status,
+  EXPECT_EQ(
+    evaluate_rate(10.0, ticks(0, 0.2, 25), 25, 5.0, 0.8, 1, false, false).status,
     TopicHealth::LOW);
-  EXPECT_EQ(evaluate_rate(10.0, ticks(0, 0.1, 10), 10, 5.0, 0.8, 1, false, false).status,
+  EXPECT_EQ(
+    evaluate_rate(10.0, ticks(0, 0.1, 10), 10, 5.0, 0.8, 1, false, false).status,
     TopicHealth::STALE);
-  EXPECT_EQ(evaluate_rate(10.0, ticks(0, 0.1, 10), 10, 5.0, 0.8, 0, false, false).status,
+  EXPECT_EQ(
+    evaluate_rate(10.0, ticks(0, 0.1, 10), 10, 5.0, 0.8, 0, false, false).status,
     TopicHealth::NO_PUBLISHER);
   EXPECT_EQ(evaluate_rate(10.0, {}, 0, 5.0, 0.8, 1, false, false).status, TopicHealth::WAITING);
-  EXPECT_EQ(evaluate_rate(10.0, {}, 0, 5.0, 0.8, 0, false, false).status,
+  EXPECT_EQ(
+    evaluate_rate(10.0, {}, 0, 5.0, 0.8, 0, false, false).status,
     TopicHealth::NO_PUBLISHER);
-  EXPECT_EQ(evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 0, true, false).status,
+  EXPECT_EQ(
+    evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 0, true, false).status,
     TopicHealth::LATCHED_MISSING);
-  EXPECT_EQ(evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 1, true, false).status,
+  EXPECT_EQ(
+    evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 1, true, false).status,
     TopicHealth::OK);
-  EXPECT_EQ(evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 1, false, true).status,
+  EXPECT_EQ(
+    evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 1, false, true).status,
     TopicHealth::TYPE_UNAVAILABLE);
-  EXPECT_EQ(evaluate_rate(std::nullopt, ticks(0, 1.0, 3), 3, 2.5, 0.8, 1, false, false).status,
+  EXPECT_EQ(
+    evaluate_rate(std::nullopt, ticks(0, 1.0, 3), 3, 2.5, 0.8, 1, false, false).status,
     TopicHealth::OK);
 }
 
@@ -115,8 +123,11 @@ TEST(Stream, ReportAndHeldIssues)
   EXPECT_EQ(s.report(102.3, 12.0, 0.8, false).status, TopicHealth::ABNORMAL);
   s.receive(text("x"), 102.4, 0);
   EXPECT_EQ(s.report(102.5, 15.0, 0.8, false).status, TopicHealth::OK);
-  EXPECT_TRUE(std::isnan(Stream(StreamSpec{"/n", "", "", std::nullopt, false, false, false,
-      true}).report(0, 0, 0.8, false).age_s));
+  EXPECT_TRUE(
+    std::isnan(
+      Stream(
+        StreamSpec{"/n", "", "", std::nullopt, false, false, false,
+          true}).report(0, 0, 0.8, false).age_s));
 }
 
 TEST(Stream, AutoMarkerOnValueChange)

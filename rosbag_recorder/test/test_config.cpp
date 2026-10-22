@@ -156,7 +156,8 @@ TEST(Catalog, Sources)
   EXPECT_EQ(s.plugin, "test/Counter");
   EXPECT_EQ(YAML::Load(s.params_yaml)["rate_hz"].as<int>(), 5);
   EXPECT_TRUE(s.channels.at("/counter/value").required);
-  EXPECT_EQ(c.sort_topics({"/zz", "/b1", "/a2", "/a1"}),
+  EXPECT_EQ(
+    c.sort_topics({"/zz", "/b1", "/a2", "/a1"}),
     (std::vector<std::string>{"/a1", "/a2", "/b1", "/zz"}));
 }
 
@@ -201,9 +202,11 @@ protected:
 
 TEST_F(Store, InheritanceAndSources)
 {
-  write("base", "name: base\nabstract: true\ngroups: [a]\nsources: [counter]\n"
+  write(
+    "base", "name: base\nabstract: true\ngroups: [a]\nsources: [counter]\n"
     "options: {compression: zstd, required_frames: [base_link]}\n");
-  write("child", "name: child\nextends: base\nadd_groups: [b]\nexclude: [/a2]\n"
+  write(
+    "child", "name: child\nextends: base\nadd_groups: [b]\nexclude: [/a2]\n"
     "topics: [/extra]\noptions: {split_duration_sec: 60}\n");
   write("nosrc", "name: nosrc\nextends: child\nexclude_sources: [counter]\n");
   const ProfileStore store(dir_);
@@ -231,7 +234,8 @@ TEST_F(Store, Errors)
   write("count", "name: count\noptions: {split_size_mb: 1.5}\n");
   write("wait", "name: wait\noptions: {wait_ready_sec: 0}\n");
   write("renamed", "name: other\n");
-  EXPECT_NE(resolve_error("loop_a").find("inheritance cycle: loop_a -> loop_b -> loop_a"),
+  EXPECT_NE(
+    resolve_error("loop_a").find("inheritance cycle: loop_a -> loop_b -> loop_a"),
     std::string::npos);
   EXPECT_NE(resolve_error("nogroup").find("no group 'zzz'"), std::string::npos);
   EXPECT_NE(resolve_error("nosource").find("no source 'zzz'"), std::string::npos);

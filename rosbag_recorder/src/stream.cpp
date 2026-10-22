@@ -40,8 +40,9 @@ Rate evaluate_rate(
   Rate r;
   if (!arrivals.empty()) {
     r.age = now - arrivals.back();
-    const auto first = std::lower_bound(arrivals.begin(), arrivals.end(),
-        now - window_for(expected));
+    const auto first = std::lower_bound(
+      arrivals.begin(), arrivals.end(),
+      now - window_for(expected));
     const auto n = std::distance(first, arrivals.end());
     if (n >= 2 && arrivals.back() > *first) {
       r.hz = static_cast<double>(n - 1) / (arrivals.back() - *first);

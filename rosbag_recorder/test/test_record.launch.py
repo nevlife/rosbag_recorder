@@ -25,6 +25,7 @@ from std_srvs.srv import Trigger
 import yaml
 
 OUT = tempfile.mkdtemp(prefix='rosbag_recorder_test_')
+SPLITS = os.environ.get('ROS_DISTRO') != 'humble'
 
 
 @pytest.mark.launch_test
@@ -95,7 +96,8 @@ class TestRecord(unittest.TestCase):
         self.assertTrue(self.call(Trigger, 'pause').success)
         self.spin(1.0)
         self.assertTrue(self.call(Trigger, 'resume').success)
-        self.assertTrue(self.call(Trigger, 'split').success)
+        split = self.call(Trigger, 'split')
+        self.assertEqual(split.success, SPLITS, split.message)
         self.spin(3.0)
         stopped = self.call(Stop, 'stop')
         self.assertTrue(stopped.success, stopped.message)
@@ -148,7 +150,7 @@ class TestRecord(unittest.TestCase):
             marks = bag.topic('/rosbag_recorder/markers')
             kinds = [marks[i][1].kind for i in range(len(marks))]
             texts = [marks[i][1].text for i in range(len(marks))]
-            for kind in ('note', 'pause', 'resume', 'split', 'mode', 'count'):
+            for kind in ('note', 'pause', 'resume', 'mode', 'count') + ('split',) * SPLITS:
                 self.assertIn(kind, kinds)
             self.assertIn('hello', texts)
             self.assertTrue(any(t.startswith('drive mode: ') for t in texts))
