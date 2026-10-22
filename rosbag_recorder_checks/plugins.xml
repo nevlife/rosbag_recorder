@@ -1,0 +1,17 @@
+<library path="rosbag_recorder_builtin_checks">
+  <class name="rosbag_recorder_checks/HeaderStamp" type="rosbag_recorder_checks::HeaderStamp" base_class_type="rosbag_recorder_checks::Check">
+    <description>header.stamp delay, future, zero, backwards and repeated stamps, read from the CDR bytes.</description>
+  </class>
+  <class name="rosbag_recorder_checks/Imu" type="rosbag_recorder_checks::Imu" base_class_type="rosbag_recorder_checks::Check">
+    <description>sensor_msgs/Imu values all zero or not finite.</description>
+  </class>
+  <class name="rosbag_recorder_checks/NavSatFix" type="rosbag_recorder_checks::NavSatFix" base_class_type="rosbag_recorder_checks::Check">
+    <description>sensor_msgs/NavSatFix horizontal accuracy from the position covariance.</description>
+  </class>
+  <class name="rosbag_recorder_checks/TfMessage" type="rosbag_recorder_checks::TfMessage" base_class_type="rosbag_recorder_checks::Check">
+    <description>tf2_msgs/TFMessage transforms not finite or quaternions not unit length.</description>
+  </class>
+  <class name="rosbag_recorder_checks/PointCloud2" type="rosbag_recorder_checks::PointCloud2" base_class_type="rosbag_recorder_checks::Check">
+    <description>sensor_msgs/PointCloud2 without points, read from the CDR bytes.</description>
+  </class>
+</library>
