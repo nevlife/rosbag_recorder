@@ -1,0 +1,11 @@
+name: test
+description: launch test
+groups: [small, large, tf]
+sources: [counter]
+options:
+  start_mode: wait_ready
+  wait_ready_sec: 15
+  split_duration_sec: 0
+  disk_warn_gb: 0.2
+  disk_stop_gb: 0.1
+  required_frames: [base_link]

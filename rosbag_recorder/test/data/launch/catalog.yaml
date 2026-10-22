@@ -1,0 +1,26 @@
+version: 1
+auto_markers:
+- topic: /test/mode
+  label: drive mode
+  field: data
+  kind: mode
+value_checks:
+  stamp_delay_max_s: 0.5
+groups:
+  small:
+    topics:
+      /test/chatter: {type: std_msgs/msg/String, hz: 20.0, required: true}
+      /test/imu: {type: sensor_msgs/msg/Imu, hz: 50.0}
+      /test/mode: {type: std_msgs/msg/String}
+  large:
+    topics:
+      /test/points: {type: sensor_msgs/msg/PointCloud2, hz: 10.0, heavy: true, size_kb: 4096.0}
+  tf:
+    topics:
+      /tf_static: {type: tf2_msgs/msg/TFMessage, latched: true}
+sources:
+  counter:
+    plugin: rosbag_recorder_test/CounterSource
+    params: {rate_hz: 20.0, mark_every: 40}
+    channels:
+      /counter/value: {hz: 20.0, required: true}

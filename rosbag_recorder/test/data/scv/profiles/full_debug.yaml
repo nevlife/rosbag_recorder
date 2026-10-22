@@ -1,0 +1,19 @@
+# SCV Logger recording profile. Saving from the GUI (profile tab) rewrites this file.
+# With extends naming a parent, only the differences from the parent are written.
+name: full_debug
+description: short problem reproduction; the whole catalog with raw cameras (several GB per minute)
+extends: base
+groups:
+- lidar
+- lidar_points
+- camera_info
+- camera_compressed
+- camera_raw
+- imu_gnss
+- vehicle
+- localization
+- planning
+- control
+- tf
+options:
+  split_duration_sec: 60

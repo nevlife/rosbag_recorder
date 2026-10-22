@@ -1,0 +1,17 @@
+# SCV Logger recording profile. Saving from the GUI (profile tab) rewrites this file.
+# With extends naming a parent, only the differences from the parent are written.
+name: base
+description: common options (not used directly; other profiles inherit it)
+abstract: true
+options:
+  storage: mcap
+  compression: none
+  split_duration_sec: 300
+  split_size_mb: 0
+  heavy_qos: keep
+  start_mode: wait_ready
+  wait_ready_sec: 30
+  start_delay_sec: 5
+  disk_warn_gb: 30.0
+  disk_stop_gb: 10.0
+  max_cache_mb: 100
