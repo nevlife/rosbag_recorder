@@ -845,7 +845,9 @@ private:
       const std::lock_guard<std::mutex> lock(markers_mutex_);
       end.markers = static_cast<std::uint32_t>(markers_.size());
     }
-    session_pub_->publish(end);
+    if (get_node_base_interface()->get_context()->is_valid()) {
+      session_pub_->publish(end);
+    }
     record(end, kSessionTopic);
     {
       const std::unique_lock<std::shared_mutex> lock(writer_mutex_);
