@@ -57,6 +57,7 @@ def widget():
 
 
 def test_widget_shows_health_status_and_markers(widget):
+    widget.show()
     widget.on_health(Health(state=Health.PREVIEW, disk_free_gb=50.0, remaining_min=math.nan,
                             topics=[topic('/a', TopicHealth.OK),
                                     topic('/b', TopicHealth.NO_PUBLISHER)]))
@@ -72,6 +73,28 @@ def test_widget_shows_health_status_and_markers(widget):
     assert widget.markers.item(0).text().endswith('[note] hello')
     widget.call(Status, 'stop')
     assert 'not available' in widget.message.text()
+
+
+def test_hidden_table_waits_and_markers_are_capped(widget):
+    from python_qt_binding.QtWidgets import QHeaderView
+    widget.show()
+    widget.tabs.setCurrentIndex(2)
+    widget.on_health(Health(remaining_min=math.nan, topics=[topic('/a', TopicHealth.OK)]))
+    assert widget.table.rowCount() == 0
+    widget.tabs.setCurrentIndex(0)
+    assert widget.table.rowCount() == 1
+    first = widget.table.item(0, 0)
+    widget.on_health(Health(remaining_min=math.nan, topics=[topic('/a', TopicHealth.LOW)]))
+    assert widget.table.item(0, 0) is first
+    assert widget.table.item(0, 2).text() == 'low rate'
+    header = widget.table.horizontalHeader()
+    assert all(header.sectionResizeMode(c) != QHeaderView.ResizeToContents
+               for c in range(widget.table.columnCount()))
+    assert widget.table.item(0, 0).toolTip() == '/a'
+    for i in range(600):
+        widget.on_marker(Marker(kind='note', text=str(i)))
+    assert widget.markers.count() == 500
+    assert widget.markers.item(0).text().endswith('599')
 
 
 @pytest.mark.copyright

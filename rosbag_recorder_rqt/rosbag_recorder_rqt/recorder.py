@@ -7,11 +7,11 @@
 import sys
 import time
 
-from python_qt_binding.QtCore import Qt, QTimer, Signal
+from python_qt_binding.QtCore import QTimer, Signal
 from python_qt_binding.QtGui import QBrush, QColor
 from python_qt_binding.QtWidgets import (
     QCheckBox, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
-    QPushButton, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+    QPushButton, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget)
 from rosbag_recorder_msgs.msg import CatalogDiffItem, Health, Marker
 from rosbag_recorder_msgs.srv import CatalogDiff, Mark, Select, Start, Status, Stop
 from rqt_gui_py.plugin import Plugin
@@ -20,6 +20,9 @@ from std_srvs.srv import Trigger
 from . import rows
 
 PREFIX = '/rosbag_recorder/'
+MAX_LINES = 500
+# Topic names can be hundreds of characters; columns keep these widths and the name is a tooltip.
+WIDTHS = (360, 80, 150, 60, 70, 60, 70, 80, 40)
 DIFF_KINDS = {CatalogDiffItem.NEW: 'new', CatalogDiffItem.MISSING: 'missing',
               CatalogDiffItem.TYPE_CHANGED: 'type changed'}
 
@@ -38,6 +41,9 @@ class RecorderWidget(QWidget):
         self.wanted_profile = ''
         self.clients = {}
         self.pending = set()
+        self.last_health = None
+        self.names = []
+        self.shown = []
         self.build()
         self.health_received.connect(self.on_health)
         self.marker_received.connect(self.on_marker)
@@ -49,7 +55,7 @@ class RecorderWidget(QWidget):
                                      lambda m: self.marker_received.emit(m), 100),
         ]
         self.timer = QTimer(self)
-        self.timer.timeout.connect(lambda: self.call(Status, 'status'))
+        self.timer.timeout.connect(lambda: self.isVisible() and self.call(Status, 'status'))
         self.timer.start(1000)
 
     def build(self):
@@ -65,8 +71,13 @@ class RecorderWidget(QWidget):
         self.diff = QListWidget()
         self.table = QTableWidget(0, len(rows.COLUMNS))
         self.table.setHorizontalHeaderLabels(rows.COLUMNS)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        for c, width in enumerate(WIDTHS):
+            header.resizeSection(c, width)
+        header.setStretchLastSection(True)
+        self.table.verticalHeader().setSectionResizeMode(QHeaderView.Fixed)
+        self.table.setWordWrap(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
 
         def button(text, slot):
@@ -91,26 +102,18 @@ class RecorderWidget(QWidget):
         controls.addWidget(button('Mark', self.mark))
         controls.addWidget(button('Catalog diff', lambda: self.call(CatalogDiff, 'catalog_diff')))
 
-        lists = QSplitter(Qt.Horizontal)
-        for title, widget in (('Preflight', self.preflight), ('Markers', self.markers),
-                              ('Catalog vs graph', self.diff)):
-            box = QWidget()
-            layout = QVBoxLayout(box)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.addWidget(QLabel(title))
-            layout.addWidget(widget)
-            lists.addWidget(box)
-        split = QSplitter(Qt.Vertical)
-        split.addWidget(self.table)
-        split.addWidget(lists)
-        split.setStretchFactor(0, 3)
+        self.tabs = QTabWidget()
+        for title, widget in (('Topics', self.table), ('Preflight', self.preflight),
+                              ('Markers', self.markers), ('Catalog vs graph', self.diff)):
+            self.tabs.addTab(widget, title)
+        self.tabs.currentChanged.connect(lambda _: self.refresh_table())
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
         layout.addLayout(controls)
         layout.addWidget(self.state)
         layout.addWidget(self.message)
-        layout.addWidget(split, 1)
+        layout.addWidget(self.tabs, 1)
 
     def call(self, srv_type, name, **fields):
         if name in self.pending:
@@ -146,9 +149,11 @@ class RecorderWidget(QWidget):
             return
         if name == 'catalog_diff':
             self.diff.clear()
-            for item in response.items:
+            lines = []
+            for item in response.items[:MAX_LINES]:
                 types = ' -> '.join(t for t in (item.catalog_type, item.graph_type) if t)
-                self.diff.addItem(f'{DIFF_KINDS[item.kind]:12} {item.topic}  {types}')
+                lines.append(f'{DIFF_KINDS[item.kind]:12} {item.topic}  {types}')
+            self.diff.addItems(lines)
         if hasattr(response, 'preflight') and response.preflight:
             self.show_preflight(response.preflight)
         self.message.setText(f'{name}: {response.message}')
@@ -172,21 +177,52 @@ class RecorderWidget(QWidget):
             self.preflight.addItems(lines)
 
     def on_health(self, health):
+        self.last_health = health
         self.state.setText(rows.summary(health))
-        self.table.setRowCount(len(health.topics))
-        for r, topic in enumerate(health.topics):
-            cells, color = rows.topic_row(topic)
+        self.refresh_table()
+
+    def refresh_table(self):
+        """Fill only a visible table, and only the cells whose text or color changed."""
+        if self.last_health is None or not self.table.isVisible():
+            return
+        topics = self.last_health.topics
+        names = [t.name for t in topics]
+        self.table.setUpdatesEnabled(False)
+        if names != self.names:
+            self.names = names
+            self.shown = [None] * len(names)
+            self.table.setRowCount(len(names))
+            for r, name in enumerate(names):
+                for c in range(len(rows.COLUMNS)):
+                    self.table.setItem(r, c, QTableWidgetItem())
+                self.table.item(r, 0).setToolTip(name)
+        for r, topic in enumerate(topics):
+            row = rows.topic_row(topic)
+            old = self.shown[r]
+            if row == old:
+                continue
+            cells, color = row
             for c, text in enumerate(cells):
-                item = self.table.item(r, c)
-                if item is None:
-                    item = QTableWidgetItem()
-                    self.table.setItem(r, c, item)
-                item.setText(text)
-                item.setBackground(QBrush(QColor(color)) if color else QBrush())
+                if old is None or old[0][c] != text:
+                    self.table.item(r, c).setText(text)
+            if old is None or old[1] != color:
+                brush = QBrush(QColor(color)) if color else QBrush()
+                for c in range(len(cells)):
+                    self.table.item(r, c).setBackground(brush)
+            if old is None or old[0][-1] != cells[-1]:
+                self.table.item(r, len(cells) - 1).setToolTip(cells[-1])
+            self.shown[r] = row
+        self.table.setUpdatesEnabled(True)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.refresh_table()
 
     def on_marker(self, marker):
         stamp = time.strftime('%H:%M:%S', time.localtime(marker.stamp.sec))
         self.markers.insertItem(0, f'{stamp} [{marker.kind}] {marker.text}')
+        if self.markers.count() > MAX_LINES:
+            self.markers.takeItem(MAX_LINES)
 
     def shutdown(self):
         self.timer.stop()
