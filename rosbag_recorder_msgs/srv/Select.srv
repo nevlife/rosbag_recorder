@@ -1,0 +1,6 @@
+# Load a profile and watch its topics without recording; returns the preflight result.
+string profile
+---
+bool success
+string message
+CheckResult[] preflight

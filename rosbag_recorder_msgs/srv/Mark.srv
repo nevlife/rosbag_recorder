@@ -1,0 +1,6 @@
+# kind defaults to note.
+string kind
+string text
+---
+bool success
+string message

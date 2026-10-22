@@ -1,0 +1,10 @@
+# Start recording. An empty profile uses the selected one. force skips the start condition.
+string profile
+string label
+string notes
+bool force
+---
+bool success
+string message
+string session_id
+CheckResult[] preflight
