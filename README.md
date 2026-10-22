@@ -46,7 +46,7 @@ below 80% of its catalog rate is `low`).
 | `/rosbag_recorder/select` | `Select` | Load a profile and watch its topics without recording |
 | `/rosbag_recorder/start` | `Start` | Start; waits for the profile's start condition unless `force` |
 | `/rosbag_recorder/stop` | `Stop` | Stop, or cancel a waiting start |
-| `/rosbag_recorder/pause`, `resume`, `split` | `std_srvs/Trigger` | Drop data while paused; split the bag file |
+| `/rosbag_recorder/pause`, `resume`, `split` | `std_srvs/Trigger` | Drop data while paused; split the bag file (not on Humble, whose writer cannot split on request) |
 | `/rosbag_recorder/mark` | `Mark` | Manual marker |
 | `/rosbag_recorder/status` | `Status` | State, profiles, last preflight |
 | `/rosbag_recorder/catalog_diff` | `CatalogDiff` | Catalog topics against the live graph |

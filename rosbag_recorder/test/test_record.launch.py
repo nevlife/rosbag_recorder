@@ -7,6 +7,7 @@
 """Record ROS topics (one of 4 MiB at 10 Hz) and a source plugin, then read the bag back."""
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -55,6 +56,7 @@ class TestRecord(unittest.TestCase):
     def tearDownClass(cls):
         cls.node.destroy_node()
         rclpy.shutdown()
+        shutil.rmtree(OUT)
 
     def call(self, srv_type, name, **fields):
         client = self.node.create_client(srv_type, '/rosbag_recorder/' + name)
