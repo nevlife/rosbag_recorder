@@ -12,7 +12,7 @@ Everything below is new since there is no release yet.
 * Session, health and marker messages and the control services (rosbag_recorder_msgs)
 * Plugin interface for recording data that is not a ROS topic (rosbag_recorder_source)
 * Value check plugin interface and the built-in checks `HeaderStamp`, `Imu`, `NavSatFix`, `TfMessage`, `PointCloud2` (rosbag_recorder_checks)
-* Recording node with SCV profiles, one shared subscription per topic and session channels in the bag (rosbag_recorder)
+* Recording node with profiles, one shared subscription per topic and session channels in the bag (rosbag_recorder)
 * rqt plugin for profile, start, stop, markers and the health table (rosbag_recorder_rqt)
 * `Health.graph_reads` counts the ticks that re-read the graph (rosbag_recorder_msgs)
 

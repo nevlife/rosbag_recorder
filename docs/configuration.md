@@ -1,19 +1,17 @@
 # Configuration
 
-A configuration folder (`config_dir`) holds `catalog.yaml` and `profiles/<name>.yaml`. The format
-is the SCV `scv_logger` format with a few optional additions, marked "added" below (see
-[scv-compatibility.md](scv-compatibility.md)). Unknown keys are errors.
+A configuration folder (`config_dir`) holds `catalog.yaml` and `profiles/<name>.yaml`. Unknown
+keys are errors.
 
 ## catalog.yaml
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `version` | `1` | Format version |
-| `heavy_threshold_kb` | `500.0` | Parsed; the recorder uses each topic's `heavy` flag instead |
 | `groups` | | `name: {description, topics: {topic: spec}}`; group names use lowercase letters, digits and `_`; a topic belongs to one group only |
 | `auto_markers` | | List of `{topic, label, field, kind}`; a change of `field` on `topic` adds a marker of `kind` (default `auto`) |
 | `value_checks` | | Positive numbers passed as thresholds to every check plugin |
-| `sources` | | Added. `name: {plugin, description, params, channels: {topic: spec}}`; `plugin` is required, `params` is handed to the plugin as YAML text |
+| `sources` | | `name: {plugin, description, params, channels: {topic: spec}}`; `plugin` is required, `params` is handed to the plugin as YAML text |
 
 Topic spec (also used for source channels):
 
@@ -25,7 +23,6 @@ Topic spec (also used for source channels):
 | `heavy` | Large topic; subject to `heavy_qos` |
 | `size_kb` | Expected message size |
 | `latched` | Transient local; the subscription keeps the last 100 messages. A topic whose publishers are all transient local is treated as latched as well |
-| `monitor_via` | Accepted and not used; every recorded topic is measured on its own subscription |
 | `description` | Free text |
 
 Value check thresholds read by the built-in checks:
@@ -49,7 +46,7 @@ Value check thresholds read by the built-in checks:
 | `groups` | Replaces the inherited topic set with these catalog groups |
 | `add_groups`, `exclude_groups` | Add or remove catalog groups |
 | `topics`, `exclude` | Add or remove single topics; topics not in the catalog are recorded without a reference rate, with a preflight warning |
-| `sources`, `exclude_sources` | Added. Source plugins to record, as declared in the catalog |
+| `sources`, `exclude_sources` | Source plugins to record, as declared in the catalog |
 | `options` | Recording options below; a child's options override its parent's |
 
 Resolution order: parent, `groups`, `add_groups`, `exclude_groups`, `topics`, `exclude`.
@@ -70,10 +67,10 @@ Inheritance cycles and chains deeper than 8 profiles are errors.
 | `disk_warn_gb` | `30.0` | Number >= 0 |
 | `disk_stop_gb` | `10.0` | Number >= 0, not larger than `disk_warn_gb` |
 | `max_cache_mb` | `100` | Integer >= 1; rosbag2 writer cache |
-| `storage_preset` | see below | Added. rosbag2 storage preset |
-| `storage_config_uri` | empty | Added. rosbag2 storage configuration file |
-| `on_not_ready` | `abort` | Added. `abort`, `start`; what `wait_ready` does when required topics are missing at the deadline |
-| `required_frames` | `[]` | Added. TF frames the preflight looks for on TF topics of the profile |
+| `storage_preset` | see below | rosbag2 storage preset |
+| `storage_config_uri` | empty | rosbag2 storage configuration file |
+| `on_not_ready` | `abort` | `abort`, `start`; what `wait_ready` does when required topics are missing at the deadline |
+| `required_frames` | `[]` | TF frames the preflight looks for on TF topics of the profile |
 
 Without `storage_preset`, MCAP uses `zstd_fast` when `compression: zstd` and `fastwrite`
 otherwise; `sqlite3` uses no preset.

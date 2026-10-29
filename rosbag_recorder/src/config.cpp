@@ -142,8 +142,7 @@ TopicSpec topic_spec(
   }
   require_map(data, where);
   check_keys(
-    data, {"type", "hz", "required", "heavy", "size_kb", "monitor_via", "latched",
-      "description"}, where);
+    data, {"type", "hz", "required", "heavy", "size_kb", "latched", "description"}, where);
   if (data["type"] && !data["type"].IsNull()) {
     const std::string type = data["type"].as<std::string>();
     if (std::count(type.begin(), type.end(), '/') != 2) {
@@ -155,9 +154,6 @@ TopicSpec topic_spec(
   t.required = flag(data["required"], where + ".required");
   t.heavy = flag(data["heavy"], where + ".heavy");
   t.size_kb = positive(data["size_kb"], where + ".size_kb");
-  if (data["monitor_via"] && !data["monitor_via"].IsNull()) {
-    t.monitor_via = topic_name(data["monitor_via"], where + ".monitor_via");
-  }
   t.latched = flag(data["latched"], where + ".latched");
   t.description = text(data["description"]);
   return t;
@@ -238,14 +234,11 @@ Catalog Catalog::parse(const YAML::Node & root, const std::string & where)
 {
   require_map(root, where);
   check_keys(
-    root, {"version", "heavy_threshold_kb", "groups", "auto_markers", "value_checks", "sources"},
-    where);
+    root, {"version", "groups", "auto_markers", "value_checks", "sources"}, where);
   Catalog c;
   if (root["version"]) {
     c.version = root["version"].as<int>();
   }
-  c.heavy_threshold_kb = positive(root["heavy_threshold_kb"], where + ".heavy_threshold_kb")
-    .value_or(500.0);
   std::map<std::string, std::string> seen;
   if (const auto groups = root["groups"]; groups && !groups.IsNull()) {
     require_map(groups, where + ".groups");

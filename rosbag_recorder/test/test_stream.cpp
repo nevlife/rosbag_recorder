@@ -155,7 +155,7 @@ TEST(SessionInfo, GlobAndIds)
   EXPECT_FALSE(glob_match("src/**/config/*.yaml", "src/a/config/sub/x.yaml"));
   EXPECT_TRUE(glob_match("src/bring_up/launch/*.py", "src/bring_up/launch/a.py"));
   EXPECT_FALSE(glob_match("src/*.py", "src/a/b.py"));
-  EXPECT_TRUE(glob_match("params/scv?.yaml", "params/scv1.yaml"));
+  EXPECT_TRUE(glob_match("params/cfg?.yaml", "params/cfg1.yaml"));
   const std::time_t t = 0;
   const std::string id = rosbag_recorder::session_id("drive", " test run!", t);
   EXPECT_EQ(id.substr(15), "_drive_test_run");

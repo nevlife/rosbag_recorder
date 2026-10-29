@@ -35,8 +35,6 @@ struct TopicSpec
   bool required{false};
   bool heavy{false};
   std::optional<double> size_kb;
-  // Read for compatibility; every recorded topic is measured on its own subscription.
-  std::optional<std::string> monitor_via;
   bool latched{false};
   std::string description;
 };
@@ -75,7 +73,6 @@ struct Catalog
   std::vector<std::string> sort_topics(const std::set<std::string> & names) const;
 
   int version{1};
-  double heavy_threshold_kb{500.0};
   std::vector<Group> groups;
   std::map<std::string, TopicSpec> topics;
   std::vector<AutoMarker> auto_markers;

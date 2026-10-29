@@ -430,7 +430,7 @@ private:
     }
     rclcpp::SubscriptionOptions options;
     options.callback_group = data_group_;
-    // SCV saw Humble crash on QoS event handlers of subscriptions added while spinning.
+    // Humble can crash on QoS event handlers of subscriptions added while spinning.
     options.use_default_callbacks = false;
     std::weak_ptr<Stream> weak = s;
     try {

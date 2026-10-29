@@ -73,7 +73,6 @@ if(BUILD_TESTING)
   find_package(std_msgs REQUIRED)
 
   ament_add_gtest(test_core test/test_config.cpp test/test_stream.cpp)
-  target_compile_definitions(test_core PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data")
   target_link_libraries(test_core ${PROJECT_NAME}_core ${std_msgs_TARGETS})
 
   add_library(rosbag_recorder_counter_source SHARED test/counter_source.cpp)

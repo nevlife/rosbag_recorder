@@ -6,8 +6,7 @@ run in the same bag.
 - One subscription per topic. The serialized message goes to the bag writer
   (`rosbag2_cpp::Writer`) and to monitoring; nothing is deserialized except small types a value
   check asks for.
-- Profiles and a topic catalog in the SCV `scv_logger` format; existing SCV configuration
-  folders work as they are.
+- Profiles with inheritance over a topic catalog.
 - Session description, 1 Hz health and markers are recorded as topics in the bag; a short
   `summary.yaml` sits beside the `.mcap` files.
 - Value checks and non-ROS data sources are pluginlib plugins.
@@ -51,7 +50,6 @@ autostart:=true` the node starts recording without any call.
 | --- | --- |
 | [docs/usage.md](docs/usage.md) | Launch arguments, node parameters, services and topics, states, session layout |
 | [docs/configuration.md](docs/configuration.md) | `catalog.yaml` and profile reference with defaults |
-| [docs/scv-compatibility.md](docs/scv-compatibility.md) | What is shared with SCV `scv_logger` and what is added |
 | [docs/plugins.md](docs/plugins.md) | Value check and source plugins |
 | [docs/testing.md](docs/testing.md) | Tests, responsiveness budgets and measurements |
 | [docs/release-notes/unreleased.md](docs/release-notes/unreleased.md) | Changes since the last release |

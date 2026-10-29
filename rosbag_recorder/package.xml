@@ -3,7 +3,7 @@
 <package format="3">
   <name>rosbag_recorder</name>
   <version>0.1.0</version>
-  <description>Recording node: profiles and catalog (SCV scv_logger format), one subscription per topic shared by the bag writer and quality monitoring, session, health and markers recorded in the bag.</description>
+  <description>Recording node: profiles and a topic catalog, one subscription per topic shared by the bag writer and quality monitoring, session, health and markers recorded in the bag.</description>
   <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
   <license>MIT</license>
 

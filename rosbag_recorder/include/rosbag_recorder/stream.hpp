@@ -39,7 +39,7 @@ struct Rate
   std::uint8_t status{TopicHealth::WAITING};
 };
 
-// Rate and liveness from arrival times (steady clock, seconds), as SCV's monitor judged them.
+// Rate and liveness from arrival times (steady clock, seconds).
 Rate evaluate_rate(
   std::optional<double> expected, const std::deque<double> & arrivals, std::uint64_t count,
   double now, double tolerance, std::uint32_t publishers, bool latched, bool type_error);

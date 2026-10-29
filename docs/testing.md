@@ -10,9 +10,7 @@ colcon test-result --verbose
 
 - the linters of the CMake packages (copyright, cpplint, uncrustify, xmllint; flake8 and pep257
   for the launch files);
-- gtests for configuration parsing (SCV's configuration as fixtures, compared with the profiles
-  SCV's own code resolves; see [scv-compatibility.md](scv-compatibility.md)), CDR reading and
-  each check;
+- gtests for configuration parsing, CDR reading and each check;
 - `test_record.launch.py`: records a 4 MiB topic at 10 Hz with other topics and the counter
   source, checks that each topic has one subscription, and reads the bag back with
   `ros2 bag info` and, when it is on `PYTHONPATH`, `rosbag2_dataset`;
