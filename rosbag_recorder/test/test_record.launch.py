@@ -1,9 +1,3 @@
-# Copyright 2026 nevlife
-#
-# Use of this source code is governed by an MIT-style
-# license that can be found in the LICENSE file or at
-# https://opensource.org/licenses/MIT.
-
 """Record ROS topics (one of 4 MiB at 10 Hz) and a source plugin, then read the bag back."""
 
 import os
@@ -112,8 +106,8 @@ class TestRecord(unittest.TestCase):
         self.assertEqual(live['/test/chatter'].status, TopicHealth.OK)
         self.assertEqual(live['/counter/value'].source, 'counter')
         self.assertEqual(live['/counter/value'].status, TopicHealth.OK)
-        self.assertTrue(any(v.startswith('delay') for v in live['/counter/imu'].values))
-        self.assertTrue(any(v.startswith('|a|') for v in live['/test/imu'].values))
+        self.assertFalse(live['/counter/imu'].values)
+        self.assertFalse(live['/test/imu'].values)
         self.assertEqual(live['/tf_static'].status, TopicHealth.OK)
 
     def test_3_bag_info(self):
@@ -152,10 +146,10 @@ class TestRecord(unittest.TestCase):
             marks = bag.topic('/rosbag_recorder/markers')
             kinds = [marks[i][1].kind for i in range(len(marks))]
             texts = [marks[i][1].text for i in range(len(marks))]
-            for kind in ('note', 'pause', 'resume', 'mode', 'count') + ('split',) * SPLITS:
+            for kind in ('note', 'pause', 'resume', 'count') + ('split',) * SPLITS:
                 self.assertIn(kind, kinds)
             self.assertIn('hello', texts)
-            self.assertTrue(any(t.startswith('drive mode: ') for t in texts))
+            self.assertNotIn('mode', kinds)
 
             counter = bag.topic('/counter/value')
             values = [counter[i][1].data for i in range(len(counter))]

@@ -1,9 +1,3 @@
-# Copyright 2026 nevlife
-#
-# Use of this source code is governed by an MIT-style
-# license that can be found in the LICENSE file or at
-# https://opensource.org/licenses/MIT.
-
 """A 500-topic profile: tick cost in preview and recording, memory over minutes."""
 
 import os

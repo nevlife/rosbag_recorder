@@ -1,9 +1,3 @@
-// Copyright 2026 nevlife
-//
-// Use of this source code is governed by an MIT-style
-// license that can be found in the LICENSE file or at
-// https://opensource.org/licenses/MIT.
-
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -25,6 +19,9 @@
 #include <vector>
 
 #include "compat.hpp"
+#include "flux_input.hpp"
+#include "flux/schemas.hpp"
+#include "flux/topics.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -44,6 +41,8 @@
 #include "rosbag_recorder_msgs/srv/catalog_diff.hpp"
 #include "rosbag_recorder_msgs/srv/mark.hpp"
 #include "rosbag_recorder_msgs/srv/select.hpp"
+#include "rosbag_recorder_msgs/srv/list_topics.hpp"
+#include "rosbag_recorder_msgs/srv/set_topics.hpp"
 #include "rosbag_recorder_msgs/srv/start.hpp"
 #include "rosbag_recorder_msgs/srv/status.hpp"
 #include "rosbag_recorder_msgs/srv/stop.hpp"
@@ -64,7 +63,6 @@ const char * const kSessionTopic = "/rosbag_recorder/session";
 const char * const kHealthTopic = "/rosbag_recorder/health";
 const char * const kMarkerTopic = "/rosbag_recorder/markers";
 constexpr int kDiskStopTicks = 3;
-constexpr double kMarkerGap = 10.0;
 constexpr std::size_t kListed = 4;
 
 double mono_now()
@@ -126,7 +124,6 @@ class RecorderNode : public rclcpp::Node
 public:
   explicit RecorderNode(const rclcpp::NodeOptions & options)
   : Node("rosbag_recorder", options),
-    check_loader_("rosbag_recorder_checks", "rosbag_recorder_checks::Check"),
     source_loader_("rosbag_recorder_source", "rosbag_recorder_source::Source")
   {
     config_dir_ = expand_user(declare_parameter("config_dir", std::string()));
@@ -135,16 +132,10 @@ public:
     param_globs_ = declare_parameter("param_globs", std::vector<std::string>{});
     param_copy_max_kb_ = declare_parameter("param_copy_max_kb", 5120);
     hz_tolerance_ = std::clamp(declare_parameter("hz_tolerance", 0.8), 0.1, 1.0);
-    value_checks_ = declare_parameter("value_checks", true);
     const std::string profile = declare_parameter("profile", std::string());
     const bool autostart = declare_parameter("autostart", false);
     label_ = declare_parameter("label", std::string());
 
-    if (value_checks_) {
-      for (const auto & name : check_loader_.getDeclaredClasses()) {
-        check_prototypes_[name] = check_loader_.createSharedInstance(name);
-      }
-    }
     control_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     data_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     session_pub_ = create_publisher<Session>(kSessionTopic, session_qos());
@@ -213,6 +204,13 @@ private:
   void services()
   {
     const auto qos = service_qos();
+    topics_srv_ = create_service<srv::ListTopics>(
+      "~/topics", [this](const std::shared_ptr<srv::ListTopics::Request>,
+      std::shared_ptr<srv::ListTopics::Response> res) {on_topics(*res);}, qos, control_group_);
+    set_topics_srv_ = create_service<srv::SetTopics>(
+      "~/set_topics", [this](const std::shared_ptr<srv::SetTopics::Request> req,
+      std::shared_ptr<srv::SetTopics::Response> res) {on_set_topics(*req, *res);},
+      qos, control_group_);
     select_srv_ = create_service<srv::Select>(
       "~/select", [this](const std::shared_ptr<srv::Select::Request> req,
       std::shared_ptr<srv::Select::Response> res) {on_select(*req, *res);},
@@ -270,6 +268,166 @@ private:
 
   // ---- selection ---------------------------------------------------------------------------
 
+  void refresh_topics(bool graph_changed)
+  {
+    if (graph_changed) {
+      ros_topics_ = get_topic_names_and_types();
+    }
+    flux_topics_.clear();
+    for (auto & topic : flux::enumerate_topics()) {
+      if (!topic.key_exact || topic.key.empty() || topic.key.front() != '/') {
+        continue;
+      }
+      const auto stats = flux::read_channel_stats(topic.signpost);
+      if (stats.live) {
+        flux_topics_.emplace(topic.key, std::move(topic));
+      }
+    }
+  }
+
+  void add_stream(
+    const std::string & name, const std::string & transport, std::uint64_t fingerprint = 0)
+  {
+    const std::string bag_name = transport == "flux" ? name + "/flux" : name;
+    StreamSpec spec{bag_name, "", "", std::nullopt, false, false, false, true};
+    if (const auto * entry = catalog_->topic(name)) {
+      spec.type = entry->type.value_or("");
+      spec.hz = entry->hz;
+      spec.required = entry->required;
+      spec.latched = entry->latched;
+      spec.heavy = entry->heavy;
+    }
+    if (transport == "flux") {
+      spec.type = "flux_msgs/msg/FluxFrame";
+      spec.source = "flux";
+      spec.latched = false;
+    }
+    auto stream = std::make_shared<Stream>(spec);
+    streams_[bag_name] = stream;
+    if (transport == "flux") {
+      stream->publishers = flux_topics_.count(name) ? 1 : 0;
+      stream->offers = {rclcpp::QoS(10)};
+      flux_inputs_[bag_name] = std::make_unique<FluxInput>(
+        *this, name, fingerprint,
+        [this, stream](std::shared_ptr<rclcpp::SerializedMessage> bytes, std::int64_t stamp) {
+          on_data(*stream, std::move(bytes), stamp);
+        });
+    }
+  }
+
+  void on_topics(srv::ListTopics::Response & res)
+  {
+    try {
+      refresh_topics(true);
+      const auto catalog = Catalog::load((fs::path(config_dir_) / "catalog.yaml").string());
+      for (const auto & [name, types] : ros_topics_) {
+        if (types.empty() || name.rfind("/rosbag_recorder/", 0) == 0 ||
+          name == "/rosout" || name == "/parameter_events")
+        {
+          continue;
+        }
+        const auto publishers = static_cast<std::uint32_t>(count_publishers(name));
+        if (publishers == 0 && !streams_.count(name)) {
+          continue;
+        }
+        msg::AvailableTopic topic;
+        topic.name = name;
+        topic.transport = "ros";
+        topic.type = types.front();
+        topic.publishers = publishers;
+        topic.selected = streams_.count(name) && streams_.at(name)->spec.source.empty();
+        res.topics.push_back(topic);
+      }
+      for (const auto & [name, entry] : flux_topics_) {
+        msg::AvailableTopic topic;
+        topic.name = name;
+        topic.transport = "flux";
+        topic.type = schemas_.contains(entry.fingerprint) ?
+          schemas_.at(entry.fingerprint).ros_type() : "raw";
+        topic.fingerprint = entry.fingerprint;
+        topic.publishers = 1;
+        topic.selected = flux_inputs_.count(name + "/flux") > 0;
+        res.topics.push_back(topic);
+      }
+      for (const auto & [name, input] : flux_inputs_) {
+        const auto original = name.substr(0, name.size() - 5);
+        if (!flux_topics_.count(original)) {
+          msg::AvailableTopic topic;
+          topic.name = original;
+          topic.transport = "flux";
+          topic.fingerprint = input->fingerprint();
+          topic.type = schemas_.contains(topic.fingerprint) ?
+            schemas_.at(topic.fingerprint).ros_type() : "raw";
+          topic.selected = true;
+          res.topics.push_back(topic);
+        }
+      }
+      for (auto & topic : res.topics) {
+        if (const auto * spec = catalog.topic(topic.name)) {
+          topic.group = spec->group;
+        }
+      }
+      res.success = true;
+    } catch (const std::exception & e) {
+      res.message = e.what();
+    }
+  }
+
+  void on_set_topics(const srv::SetTopics::Request & req, srv::SetTopics::Response & res)
+  {
+    if (!idle_or_preview()) {
+      res.message = "recording; stop before changing topics";
+      return;
+    }
+    try {
+      refresh_topics(true);
+      const auto catalog = Catalog::load((fs::path(config_dir_) / "catalog.yaml").string());
+      std::set<std::string> bag_names;
+      std::map<std::string, std::uint64_t> fingerprints;
+      for (const auto & topic : req.topics) {
+        if (topic.transport != "ros" && topic.transport != "flux") {
+          throw ConfigError("unknown transport: " + topic.transport);
+        }
+        if (topic.transport == "flux" ?
+          (!flux_topics_.count(topic.name) && !flux_inputs_.count(topic.name + "/flux")) :
+          !ros_topics_.count(topic.name))
+        {
+          throw ConfigError("topic not available: " + topic.name);
+        }
+        const auto bag_name = topic.transport == "flux" ? topic.name + "/flux" : topic.name;
+        if (!bag_names.insert(bag_name).second) {
+          throw ConfigError("duplicate bag topic: " + bag_name);
+        }
+        if (topic.transport == "flux") {
+          fingerprints[topic.name] = flux_topics_.count(topic.name) ?
+            flux_topics_.at(topic.name).fingerprint : flux_inputs_.at(bag_name)->fingerprint();
+        }
+      }
+      unselect();
+      catalog_ = catalog;
+      profile_ = ResolvedProfile{};
+      profile_->name = "default";
+      profile_->options.start_mode = "immediate";
+      for (const auto & topic : req.topics) {
+        add_stream(topic.name, topic.transport, fingerprints[topic.name]);
+        profile_->topics.push_back(topic.transport == "flux" ? topic.name + "/flux" : topic.name);
+      }
+      state_ = Health::PREVIEW;
+      message_ = "selected " + std::to_string(streams_.size()) + " topics";
+      subscribe_pending(true);
+      for (const auto & [name, stream] : streams_) {
+        last_health_.topics.push_back(
+          stream->report(mono_now(), wall_now(), hz_tolerance_, sim_time_));
+      }
+      preflight_ = preflight();
+      res.success = true;
+      res.message = message_;
+      res.preflight = preflight_;
+    } catch (const std::exception & e) {
+      res.message = e.what();
+    }
+  }
+
   void select(const std::string & name)
   {
     unselect();
@@ -281,21 +439,7 @@ private:
     std::vector<std::string> topics = profile_->topics;
     topics.insert(topics.end(), profile_->unknown_topics.begin(), profile_->unknown_topics.end());
     for (const auto & t : topics) {
-      StreamSpec s{t, "", "", std::nullopt, false, false, false, true};
-      if (const TopicSpec * spec = catalog_->topic(t)) {
-        s.type = spec->type.value_or("");
-        s.hz = spec->hz;
-        s.required = spec->required;
-        s.latched = spec->latched;
-        s.heavy = spec->heavy;
-      }
-      streams_[t] = std::make_shared<Stream>(s);
-    }
-    for (const auto & m : catalog_->auto_markers) {
-      if (!streams_.count(m.topic)) {
-        streams_[m.topic] = std::make_shared<Stream>(
-          StreamSpec{m.topic, "", "", std::nullopt, false, false, false, false});
-      }
+      add_stream(t, "ros");
     }
     try {
       for (const auto & s : profile_->sources) {
@@ -308,6 +452,12 @@ private:
     state_ = Health::PREVIEW;
     message_ = "selected " + name;
     subscribe_pending(true);
+    for (const auto & [topic, stream] : streams_) {
+      if (stream->spec.record) {
+        last_health_.topics.push_back(
+          stream->report(mono_now(), wall_now(), hz_tolerance_, sim_time_));
+      }
+    }
     preflight_ = preflight();
     RCLCPP_INFO(
       get_logger(), "profile %s: %zu topics, %zu sources", name.c_str(), topics.size(),
@@ -352,12 +502,15 @@ private:
       s.plugin->stop();
     }
     sources_.clear();
+    flux_inputs_.clear();
     for (auto & kv : streams_) {
       kv.second->subscription.reset();
     }
     streams_.clear();
     profile_.reset();
     catalog_.reset();
+    last_health_ = Health{};
+    preflight_.clear();
     state_ = Health::IDLE;
   }
 
@@ -370,6 +523,12 @@ private:
         streams[i]->publishers = loaded.plugin->publishers(i);
       }
     }
+    for (auto & [name, input] : flux_inputs_) {
+      auto & stream = streams_.at(name);
+      const auto it = flux_topics_.find(name.substr(0, name.size() - 5));
+      stream->publishers = it == flux_topics_.end() ? 0 : 1;
+      stream->error = input->error();
+    }
     if (!graph_changed) {
       return;
     }
@@ -380,15 +539,18 @@ private:
         pending = pending || (!s->subscription && s->error.empty());
       }
     }
-    if (!pending) {
-      return;
-    }
-    const auto graph = get_topic_names_and_types();
+    const auto graph = pending ? get_topic_names_and_types() :
+      std::map<std::string, std::vector<std::string>>{};
     for (auto & [name, s] : streams_) {
+      if (!s->spec.source.empty() || !s->error.empty() || s->publishers == 0) {
+        continue;
+      }
+      if (s->subscription) {
+        subscribe(s, s->spec.type);
+        continue;
+      }
       const auto it = graph.find(name);
-      if (!s->spec.source.empty() || s->subscription || !s->error.empty() || s->publishers == 0 ||
-        it == graph.end() || it->second.empty())
-      {
+      if (it == graph.end() || it->second.empty()) {
         continue;
       }
       subscribe(s, it->second.front());
@@ -398,7 +560,10 @@ private:
   void subscribe(const std::shared_ptr<Stream> & s, const std::string & type)
   {
     const std::string & name = s->spec.name;
-    s->spec.type = type;
+    const bool initial = !s->subscription;
+    if (initial) {
+      s->spec.type = type;
+    }
     const auto publishers = get_publishers_info_by_topic(name);
     rclcpp::QoS qos = Rosbag2QoS::adapt_request_to_offers(name, publishers);
     bool all_latched = !publishers.empty();
@@ -408,22 +573,19 @@ private:
         p.qos_profile().durability() == rclcpp::DurabilityPolicy::TransientLocal;
       s->offers.push_back(p.qos_profile());
     }
-    s->spec.latched = s->spec.latched || all_latched;
+    if (initial) {
+      s->spec.latched = s->spec.latched || all_latched;
+    }
     if (s->spec.latched) {
       qos.keep_last(100);
     } else if (s->spec.heavy && profile_->options.heavy_qos == "best_effort") {
       qos.best_effort();
     }
-    attach(*s);
-    if (const auto m = std::find_if(
-        catalog_->auto_markers.begin(), catalog_->auto_markers.end(),
-        [&](const AutoMarker & a) {return a.topic == name;}); m != catalog_->auto_markers.end())
-    {
-      try {
-        s->set_auto_marker(*m);
-      } catch (const std::exception & e) {
-        RCLCPP_WARN(get_logger(), "auto marker on %s off: %s", name.c_str(), e.what());
-      }
+    if (s->subscription && s->subscription_qos && *s->subscription_qos == qos) {
+      return;
+    }
+    if (initial) {
+      attach(*s);
     }
     if (s->spec.record) {
       create_bag_topic(*s);
@@ -433,6 +595,7 @@ private:
     // SCV saw Humble crash on QoS event handlers of subscriptions added while spinning.
     options.use_default_callbacks = false;
     std::weak_ptr<Stream> weak = s;
+    s->subscription.reset();
     try {
       s->subscription = create_generic_subscription(
         name, type, qos, [this, weak](std::shared_ptr<rclcpp::SerializedMessage> m) {
@@ -440,6 +603,7 @@ private:
             on_data(*stream, std::move(m), now().nanoseconds());
           }
         }, options);
+      s->subscription_qos = qos;
     } catch (const std::exception & e) {
       s->error = "type unavailable: " + type;
       RCLCPP_WARN(get_logger(), "%s (%s): %s", name.c_str(), type.c_str(), e.what());
@@ -448,22 +612,6 @@ private:
 
   void attach(Stream & s)
   {
-    const rosbag_recorder_checks::TopicInfo topic{s.spec.name, s.spec.type, s.spec.latched};
-    std::vector<std::shared_ptr<rosbag_recorder_checks::Check>> checks;
-    for (const auto & [name, prototype] : check_prototypes_) {
-      try {
-        if (prototype->accepts(topic)) {
-          auto check = check_loader_.createSharedInstance(name);
-          check->configure(topic, catalog_->value_checks);
-          checks.push_back(check);
-        }
-      } catch (const std::exception & e) {
-        RCLCPP_WARN(
-          get_logger(), "check %s on %s off: %s", name.c_str(), s.spec.name.c_str(),
-          e.what());
-      }
-    }
-    s.set_checks(std::move(checks));
     if (!profile_->options.required_frames.empty() && s.spec.type == "tf2_msgs/msg/TFMessage") {
       s.collect_frames();
     }
@@ -473,9 +621,7 @@ private:
 
   void on_data(Stream & s, std::shared_ptr<rclcpp::SerializedMessage> message, std::int64_t time)
   {
-    if (const auto change = s.receive(*message, mono_now(), wall_now())) {
-      mark(s.auto_kind, *change, "auto", s.spec.name);
-    }
+    s.receive(*message, mono_now(), wall_now());
     if (s.spec.latched) {
       s.keep_latched(message);
     }
@@ -535,6 +681,7 @@ private:
       sim_until_ = wall_now() + 5.0;
     }
     sim_time_ = wall_now() < sim_until_;
+    refresh_topics(graph_changed);
     if (profile_) {
       subscribe_pending(graph_changed);
     }
@@ -572,9 +719,6 @@ private:
     const bool open = session_open();
     for (auto & [name, s] : streams_) {
       TopicHealth t = s->report(mono, wall, hz_tolerance_, sim_time_);
-      if (open && s->spec.record) {
-        value_marker(*s, t, wall);
-      }
       if (s->spec.record) {
         h.topics.push_back(std::move(t));
       }
@@ -604,23 +748,6 @@ private:
         mark("disk_stop", "disk free " + fixed(*free, 1) + " GB, recording stopped", "auto", "");
         finish("disk_low");
       }
-    }
-  }
-
-  void value_marker(Stream & s, const TopicHealth & t, double wall)
-  {
-    const bool abnormal = t.status == TopicHealth::ABNORMAL;
-    if (abnormal && !s.marker_open && wall - s.last_marker >= kMarkerGap) {
-      std::string issues;
-      for (const auto & i : t.issues) {
-        issues += (issues.empty() ? "" : ", ") + i;
-      }
-      mark("value_issue", "value issue: " + t.name + ": " + issues, "auto", t.name);
-      s.marker_open = true;
-      s.last_marker = wall;
-    } else if (!abnormal && s.marker_open) {
-      mark("value_ok", "values normal again: " + t.name, "auto", t.name);
-      s.marker_open = false;
     }
   }
 
@@ -729,6 +856,18 @@ private:
 
   std::string request_start(bool force)
   {
+    if (streams_.empty() && profile_->name == "default") {
+      throw ConfigError("select at least one topic");
+    }
+    if (profile_->abstract) {
+      throw ConfigError(profile_->name + " is abstract");
+    }
+    preflight_ = preflight();
+    for (const auto & c : preflight_) {
+      if (c.level == CheckResult::ERROR) {
+        throw ConfigError("preflight: " + c.text);
+      }
+    }
     const auto & o = profile_->options;
     if (force || o.start_mode == "immediate") {
       begin();
@@ -817,24 +956,24 @@ private:
       set_offered_qos(meta, {qos});
       writer->create_topic(meta);
     }
-    {
-      const std::unique_lock<std::shared_mutex> lock(writer_mutex_);
-      writer_ = writer;
-      session_id_ = fs::path(path).filename().string();
-      bag_path_ = path;
-    }
     start_time_ = now();
     for (auto & kv : streams_) {
       Stream & s = *kv.second;
       s.reset_counts();
       s.marker_open = false;
       if (s.spec.record && !s.spec.type.empty() && (s.subscription || !s.spec.source.empty())) {
-        create_bag_topic(s);
+        create_bag_topic(s, *writer);
         for (auto & m : s.latched()) {
           writer->write(m, s.spec.name, s.spec.type, start_time_);
           s.count_written();
         }
       }
+    }
+    {
+      const std::unique_lock<std::shared_mutex> lock(writer_mutex_);
+      writer_ = writer;
+      session_id_ = fs::path(path).filename().string();
+      bag_path_ = path;
     }
     paused_ = false;
     start_mono_ = mono_now();
@@ -859,12 +998,17 @@ private:
     if (!writer_) {
       return;
     }
+    create_bag_topic(s, *writer_);
+  }
+
+  void create_bag_topic(const Stream & s, rosbag2_cpp::Writer & writer)
+  {
     rosbag2_storage::TopicMetadata meta;
     meta.name = s.spec.name;
     meta.type = s.spec.type;
     meta.serialization_format = s.serialization_format;
     set_offered_qos(meta, s.offers);
-    create_topic(*writer_, meta, s.definition, s.definition_encoding);
+    create_topic(writer, meta, s.definition, s.definition_encoding);
   }
 
   void finish(const std::string & reason)
@@ -955,10 +1099,14 @@ private:
       out << std::string(kLevels[c.level]) + ": " + c.text;
     }
     out << YAML::EndSeq << YAML::Key << "topics" << YAML::Value << YAML::BeginMap;
-    for (const auto & t : last_health_.topics) {
+    for (const auto & [name, stream] : streams_) {
+      if (!stream->spec.record) {
+        continue;
+      }
+      const auto t = stream->report(mono_now(), wall_now(), hz_tolerance_, sim_time_);
       out << YAML::Key << t.name << YAML::Value << YAML::Flow << YAML::BeginMap;
       out << YAML::Key << "type" << YAML::Value << t.type;
-      out << YAML::Key << "written" << YAML::Value << streams_.at(t.name)->written();
+      out << YAML::Key << "written" << YAML::Value << t.written;
       out << YAML::Key << "last_status" << YAML::Value << kStatus[t.status];
       out << YAML::EndMap;
     }
@@ -1006,24 +1154,15 @@ private:
         res.message = "no profile selected";
         return;
       }
-      if (profile_->abstract) {
-        res.message = profile_->name + " is abstract";
-        return;
-      }
       label_ = req.label;
       notes_ = req.notes;
-      res.preflight = preflight();
-      for (const auto & c : res.preflight) {
-        if (c.level == CheckResult::ERROR) {
-          res.message = "preflight: " + c.text;
-          return;
-        }
-      }
       res.message = request_start(req.force);
+      res.preflight = preflight_;
       res.success = true;
       res.session_id = session_id_;
     } catch (const std::exception & e) {
       state_ = profile_ ? Health::PREVIEW : Health::IDLE;
+      res.preflight = preflight_;
       res.message = e.what();
     }
   }
@@ -1157,16 +1296,17 @@ private:
   std::vector<std::string> param_globs_;
   std::int64_t param_copy_max_kb_{0};
   double hz_tolerance_{0.8};
-  bool value_checks_{true};
 
-  pluginlib::ClassLoader<rosbag_recorder_checks::Check> check_loader_;
   pluginlib::ClassLoader<rosbag_recorder_source::Source> source_loader_;
-  std::map<std::string, std::shared_ptr<rosbag_recorder_checks::Check>> check_prototypes_;
 
   std::optional<Catalog> catalog_;
   std::optional<ResolvedProfile> profile_;
   std::map<std::string, std::shared_ptr<Stream>> streams_;
   std::vector<LoadedSource> sources_;
+  flux::Schemas schemas_;
+  std::map<std::string, flux::Topic> flux_topics_;
+  std::map<std::string, std::vector<std::string>> ros_topics_;
+  std::map<std::string, std::unique_ptr<FluxInput>> flux_inputs_;
 
   std::atomic<std::uint8_t> state_{Health::IDLE};
   std::string message_;
@@ -1200,6 +1340,8 @@ private:
   rclcpp::Publisher<Session>::SharedPtr session_pub_;
   rclcpp::Publisher<Health>::SharedPtr health_pub_;
   rclcpp::Publisher<Marker>::SharedPtr marker_pub_;
+  rclcpp::Service<srv::ListTopics>::SharedPtr topics_srv_;
+  rclcpp::Service<srv::SetTopics>::SharedPtr set_topics_srv_;
   rclcpp::Service<srv::Select>::SharedPtr select_srv_;
   rclcpp::Service<srv::Start>::SharedPtr start_srv_;
   rclcpp::Service<srv::Stop>::SharedPtr stop_srv_;

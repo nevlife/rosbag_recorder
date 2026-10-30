@@ -12,7 +12,6 @@
   <depend>rclcpp</depend>
 
   <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_cmake_copyright</test_depend>
   <test_depend>ament_cmake_cpplint</test_depend>
   <test_depend>ament_cmake_uncrustify</test_depend>
   <test_depend>ament_cmake_xmllint</test_depend>

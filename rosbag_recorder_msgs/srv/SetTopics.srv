@@ -1,0 +1,5 @@
+TopicSelection[] topics
+---
+bool success
+string message
+CheckResult[] preflight

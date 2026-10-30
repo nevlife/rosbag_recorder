@@ -8,6 +8,8 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(ament_cmake REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(flux_cpp REQUIRED)
+find_package(flux_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
@@ -36,11 +38,13 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC
   yaml-cpp
   OpenSSL::Crypto)
 
-add_library(${PROJECT_NAME}_component SHARED src/recorder_node.cpp)
+add_library(${PROJECT_NAME}_component SHARED src/recorder_node.cpp src/flux_input.cpp)
 target_compile_definitions(${PROJECT_NAME}_component PRIVATE
   ROSBAG_RECORDER_ROSBAG2_MINOR=${rosbag2_cpp_VERSION_MINOR})
 target_link_libraries(${PROJECT_NAME}_component PUBLIC
   ${PROJECT_NAME}_core
+  flux_cpp::flux_cpp
+  ${flux_msgs_TARGETS}
   pluginlib::pluginlib
   rclcpp_components::component
   rmw::rmw
@@ -62,7 +66,7 @@ install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_component
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin)
-install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
@@ -97,6 +101,12 @@ if(BUILD_TESTING)
   add_launch_test(test/test_record.launch.py
     TIMEOUT 180
     ENV ROS_DOMAIN_ID=87 TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/data)
+  add_launch_test(test/test_lifecycle.launch.py
+    TIMEOUT 120
+    ENV ROS_DOMAIN_ID=91 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
+  add_launch_test(test/test_selection.launch.py
+    TIMEOUT 120
+    ENV ROS_DOMAIN_ID=95 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
 endif()
 
 ament_export_dependencies(rclcpp rosbag_recorder_checks rosbag_recorder_msgs tf2_msgs yaml-cpp)

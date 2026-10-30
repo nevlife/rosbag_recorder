@@ -1,9 +1,3 @@
-// Copyright 2026 nevlife
-//
-// Use of this source code is governed by an MIT-style
-// license that can be found in the LICENSE file or at
-// https://opensource.org/licenses/MIT.
-
 #ifndef ROSBAG_RECORDER__STREAM_HPP_
 #define ROSBAG_RECORDER__STREAM_HPP_
 
@@ -88,6 +82,7 @@ public:
   std::vector<rclcpp::QoS> offers;
   std::string auto_kind;
   rclcpp::GenericSubscription::SharedPtr subscription;
+  std::optional<rclcpp::QoS> subscription_qos;
   std::string error;
   std::uint32_t publishers{0};
   bool marker_open{false};

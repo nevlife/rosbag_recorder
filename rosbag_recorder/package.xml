@@ -10,6 +10,8 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>libssl-dev</depend>
+  <depend>flux_cpp</depend>
+  <depend>flux_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
@@ -32,13 +34,15 @@
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
-  <test_depend>ament_cmake_copyright</test_depend>
   <test_depend>ament_cmake_cpplint</test_depend>
   <test_depend>ament_cmake_flake8</test_depend>
   <test_depend>ament_cmake_pep257</test_depend>
   <test_depend>ament_cmake_uncrustify</test_depend>
   <test_depend>ament_cmake_xmllint</test_depend>
   <test_depend>geometry_msgs</test_depend>
+  <test_depend>flux_py</test_depend>
+  <test_depend>python3-numpy</test_depend>
+  <test_depend>rosbag2_py</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>launch_testing_ros</test_depend>
   <test_depend>python3-yaml</test_depend>

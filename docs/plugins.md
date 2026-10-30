@@ -1,35 +1,10 @@
 # Plugins
 
-Both plugin kinds are pluginlib classes. Signatures are in the generated reference of
-`rosbag_recorder_checks` and `rosbag_recorder_source`; this page covers how the recorder uses
-them.
+The recorder supports source plugins for scripted integrations. ROS and Flux selection in the
+window uses built-in inputs and does not require a source plugin.
 
-## Value checks
-
-A value check implements `rosbag_recorder_checks::Check` and is exported for base class
-`rosbag_recorder_checks::Check`.
-
-| Method | Called |
-| --- | --- |
-| `accepts(topic)` | On one prototype instance, once per watched topic or channel |
-| `configure(topic, thresholds)` | On a new instance per accepted topic; thresholds are the catalog's `value_checks` |
-| `on_message(message, wall)` | For every message, with the serialized bytes and the receive time |
-| `evaluate(context, result)` | Once per health tick; fills issues and values, false when no message arrived |
-
-Issues turn the topic `ABNORMAL` in `Health` and add `value_issue` and `value_ok` markers.
-`value_checks:=false` loads no check.
-
-Built-in checks (`rosbag_recorder_checks/<name>`):
-
-| Check | Looks at |
-| --- | --- |
-| `HeaderStamp` | Delay, future, zero, backwards and repeated `header.stamp`, read from the CDR bytes of any type whose first field is `std_msgs/Header` |
-| `Imu` | `sensor_msgs/Imu` values all zero or not finite |
-| `NavSatFix` | Horizontal accuracy from the position covariance |
-| `TfMessage` | Transforms not finite or quaternions not unit length |
-| `PointCloud2` | Empty clouds, read from the CDR bytes |
-
-Their thresholds are listed in [configuration.md](configuration.md#catalogyaml).
+`rosbag_recorder_checks` remains an independent library. The recorder no longer discovers its
+plugins, attaches checks by message type, or generates automatic value markers.
 
 ## Sources
 

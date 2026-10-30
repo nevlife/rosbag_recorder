@@ -6,6 +6,8 @@ find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  msg/AvailableTopic.msg
+  msg/TopicSelection.msg
   msg/CatalogDiffItem.msg
   msg/CheckResult.msg
   msg/FileSnapshot.msg
@@ -14,6 +16,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   msg/Session.msg
   msg/TopicHealth.msg
   srv/CatalogDiff.srv
+  srv/ListTopics.srv
+  srv/SetTopics.srv
   srv/Mark.srv
   srv/Select.srv
   srv/Start.srv

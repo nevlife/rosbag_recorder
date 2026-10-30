@@ -1,103 +1,64 @@
 # Usage
 
-## Run
+## Desktop window
 
 ```bash
-ros2 launch rosbag_recorder recorder.launch.py config_dir:=/path/to/config output_dir:=~/logs
+rosbag_recorder
 ```
 
-The launch file starts `rosbag_recorder_node` with the node name `rosbag_recorder`; services and
-topics below assume that name.
+The launcher starts a recorder if none is available in the current ROS domain, then opens RQT.
+It uses the installed catalog by default. The window lists discovered ROS topics and live Flux
+channels, grouped by the catalog's topic names. Missing selected Flux channels remain visible
+so that a publisher restart does not discard their selection.
 
-| Launch argument | Default | Meaning |
+1. Check a category or individual topics. Uncategorized inputs remain individually selectable.
+2. Click Preview selection to monitor the inputs before recording, or Start to apply the checked
+   selection and begin recording immediately.
+3. Watch reception status, Hz, age, written counts and disk space.
+4. Click Stop to finish. Topic selection is locked while recording or paused.
+
+An empty selection cannot start recording. ROS and Flux inputs with the same name are distinct.
+Newly discovered inputs are left unchecked. The window has no profile menu, preflight tab,
+marker controls or catalog comparison tab. File-system and disk checks appear in the main window.
+No message-type-specific value checks or automatic value markers are attached.
+
+Pause discards incoming messages until Resume. Split starts the next file in the same session.
+Closing the GUI does not stop recording. Open `rosbag_recorder` again to reconnect.
+
+## Launcher options
+
+| Option | Default | Meaning |
 | --- | --- | --- |
-| `config_dir` | empty | Folder with `catalog.yaml` and `profiles/` |
-| `output_dir` | `~/rosbag_recorder` | Where sessions are written |
-| `profile` | empty | Profile selected at start |
-| `autostart` | `false` | Start recording `profile` at once |
-| `label` | empty | Session label used by `autostart` |
-| `workspace` | empty | Workspace whose git state and parameter files are recorded |
-| `value_checks` | `true` | Run the value check plugins |
-| `respawn` | `false` | Restart the node 2 s after it exits |
+| `--config-dir` | Installed `share/rosbag_recorder/config` | Catalog and optional profiles for a new recorder |
+| `--output-dir` | `~/rosbag_recorder` | Session directory for a new recorder |
+| `--profile` | empty | Optional profile for scripted startup |
+| `--autostart` | disabled | Record the supplied profile on startup |
+| `--no-gui` | disabled | Start or reuse the recorder without opening a window |
 
-Every launch argument except `respawn` is also a node parameter. The node has three more
-parameters:
+Options do not reconfigure an already running recorder. Recorder output is appended to
+`$XDG_STATE_HOME/rosbag_recorder/recorder-<domain>.log`, or
+`~/.local/state/rosbag_recorder/recorder-<domain>.log` when `XDG_STATE_HOME` is unset.
 
-| Parameter | Default | Meaning |
+## Topic selection services
+
+| Service | Type | Behavior |
 | --- | --- | --- |
-| `param_globs` | `[]` | Workspace-relative globs (`**` allowed) of files to hash and copy into the session |
-| `param_copy_max_kb` | `5120` | Total size of copied files; files past it are hashed only |
-| `hz_tolerance` | `0.8` | A topic below this share of its catalog rate is `LOW`; clamped to 0.1-1.0 |
+| `/rosbag_recorder/topics` | `ListTopics` | List discovered inputs, their category, transport, type, publishers and selected state |
+| `/rosbag_recorder/set_topics` | `SetTopics` | Apply explicit `{name, transport}` selections; transport is `ros` or `flux` |
+| `/rosbag_recorder/start` | `Start` | Begin recording the selection; no profile argument is needed |
+| `/rosbag_recorder/stop` | `Stop` | Close the current bag |
+| `/rosbag_recorder/pause`, `resume`, `split` | `std_srvs/Trigger` | Control an open session |
 
-## rqt plugin
+The existing `Select`, `Status`, `Mark` and `CatalogDiff` service APIs remain available for scripts.
+Health and session metadata continue to be stored in the bag, with `summary.yaml` at session end.
+Disk-space thresholds from the recording options still warn or stop recording.
 
-```bash
-rqt --standalone rosbag_recorder_rqt.recorder.RecorderPlugin
-ros2 run rosbag_recorder_rqt rosbag_recorder_rqt   # same plugin, own window
-```
+## Flux bags
 
-The plugin ("Rosbag Recorder", group "Logging") selects a profile, starts, stops, pauses and
-marks, and shows the health table from `/rosbag_recorder/health`.
+Flux channel `NAME` is stored on bag topic `NAME/flux` as `flux_msgs/msg/FluxFrame`. The wrapper
+contains the original name, fingerprint, commit timestamp, raw frame bytes and slot/array metadata.
+The input's custom ROS type does not need to be installed for raw recording. Unknown fingerprints
+appear as `raw` in the list. Use `ros2 bag play_flux BAG` for Flux replay.
 
-## Services and topics
-
-| Name | Kind | Purpose |
-| --- | --- | --- |
-| `/rosbag_recorder/select` | `Select` | Load a profile and watch its topics without recording |
-| `/rosbag_recorder/start` | `Start` | Start; waits for the profile's start condition unless `force` |
-| `/rosbag_recorder/stop` | `Stop` | Stop, or cancel a waiting start |
-| `/rosbag_recorder/pause`, `resume`, `split` | `std_srvs/Trigger` | Drop data while paused; split the bag file (not on Humble, whose writer cannot split on request) |
-| `/rosbag_recorder/mark` | `Mark` | Manual marker (kind `note` when empty) |
-| `/rosbag_recorder/status` | `Status` | State, profiles, last preflight |
-| `/rosbag_recorder/catalog_diff` | `CatalogDiff` | Catalog topics against the live graph |
-| `/rosbag_recorder/session` | `Session`, transient local | Start and end of a session; recorded |
-| `/rosbag_recorder/health` | `Health`, 1 Hz | State and per-topic quality; recorded while a session is open |
-| `/rosbag_recorder/markers` | `Marker` | Manual, automatic and source markers; recorded |
-
-Message and service fields are in the generated reference of `rosbag_recorder_msgs`.
-
-## States
-
-| State | Meaning |
-| --- | --- |
-| idle | No profile selected |
-| preview | Profile selected, its topics watched, nothing written |
-| waiting | Start requested; waiting for the start condition (`start_mode`) |
-| recording | Session open, data written |
-| paused | Session open, data dropped |
-
-Start conditions come from the profile options (see [configuration.md](configuration.md)):
-
-- `immediate` starts at once; `force` in the `Start` request does the same for any mode.
-- `delay` starts after `start_delay_sec`.
-- `wait_ready` starts when every required topic is present, or after `wait_ready_sec`. If
-  required topics are still missing then, `on_not_ready: abort` returns to preview and `start`
-  records anyway with a `not_ready` marker.
-
-While recording, the node stops the session (`end_reason: disk_low`, marker `disk_stop`) when the
-free disk space stays below `disk_stop_gb` for three 1 Hz ticks in a row. Below `disk_warn_gb` it
-only adds a warning to `Health`.
-
-## Session layout
-
-A session is a bag directory `<output_dir>/<YYYYmmdd_HHMMSS>_<profile>[_<label>]` with:
-
-- the recorded topics and source channels;
-- `/rosbag_recorder/session` twice: `START` with the resolved profile, node parameters, host,
-  RMW, git state of `workspace`, files matched by `param_globs`, the graph and the preflight
-  result; `END` with the end reason, size and marker count;
-- `/rosbag_recorder/health` once per second and `/rosbag_recorder/markers`;
-- `summary.yaml`: session id, profile, label, notes, host, start, end, duration, end reason,
-  size, preflight, per-topic type, written count and last status, and the markers.
-
-Marker kinds:
-
-| Kind | Source | When |
-| --- | --- | --- |
-| request `kind`, or `note` | `user` | `mark` service |
-| `pause`, `resume`, `split` | `user` | The matching service |
-| catalog `auto_markers[].kind` (default `auto`) | `auto` | The watched field of an `auto_markers` topic changes |
-| `value_issue`, `value_ok` | `auto` | A topic's value checks turn abnormal, and normal again; a new `value_issue` comes at least 10 s after the previous one |
-| `not_ready` | `auto` | `on_not_ready: start` began without required topics |
-| `disk_stop` | `auto` | Free disk below `disk_stop_gb` |
-| the source's own | source plugin name | `Sink::mark` |
+A ROS topic whose name already equals a selected Flux input's bag topic would collide; the
+selection service rejects that combination. CPU recording requires host-accessible payloads.

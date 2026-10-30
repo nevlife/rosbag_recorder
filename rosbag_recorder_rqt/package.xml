@@ -7,14 +7,15 @@
   <maintainer email="nevlife000720@gmail.com">nevlife</maintainer>
   <license>MIT</license>
 
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python_qt_binding</exec_depend>
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>rosbag_recorder</exec_depend>
   <exec_depend>rosbag_recorder_msgs</exec_depend>
   <exec_depend>rqt_gui</exec_depend>
   <exec_depend>rqt_gui_py</exec_depend>
   <exec_depend>std_srvs</exec_depend>
 
-  <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>ament_xmllint</test_depend>

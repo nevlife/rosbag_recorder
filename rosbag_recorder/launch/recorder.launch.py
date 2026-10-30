@@ -1,9 +1,3 @@
-# Copyright 2026 nevlife
-#
-# Use of this source code is governed by an MIT-style
-# license that can be found in the LICENSE file or at
-# https://opensource.org/licenses/MIT.
-
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition, UnlessCondition
@@ -17,7 +11,6 @@ ARGUMENTS = {
     'autostart': ('false', 'start recording the profile at once'),
     'label': ('', 'session label used by autostart'),
     'workspace': ('', 'workspace whose git state and parameter files are recorded'),
-    'value_checks': ('true', 'run the value check plugins'),
     'respawn': ('false', 'restart the node when it exits'),
 }
 

@@ -1,9 +1,3 @@
-# Copyright 2026 nevlife
-#
-# Use of this source code is governed by an MIT-style
-# license that can be found in the LICENSE file or at
-# https://opensource.org/licenses/MIT.
-
 """Publish the topics the launch test records, one of them 4 MiB at 10 Hz."""
 
 import array

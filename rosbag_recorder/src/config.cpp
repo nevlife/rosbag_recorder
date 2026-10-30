@@ -1,9 +1,3 @@
-// Copyright 2026 nevlife
-//
-// Use of this source code is governed by an MIT-style
-// license that can be found in the LICENSE file or at
-// https://opensource.org/licenses/MIT.
-
 #include "rosbag_recorder/config.hpp"
 
 #include <algorithm>
@@ -499,7 +493,7 @@ std::vector<std::string> ProfileStore::names() const
     return out;
   }
   for (const auto & entry : fs::directory_iterator(directory_)) {
-    if (entry.path().extension() == ".yaml") {
+    if (entry.is_regular_file() && entry.path().extension() == ".yaml") {
       out.push_back(entry.path().stem().string());
     }
   }
