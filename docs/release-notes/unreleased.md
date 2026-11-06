@@ -20,6 +20,7 @@ Everything below is new since there is no release yet.
 
 * Do not publish the end session after shutdown (rosbag_recorder)
 * Build and test on Humble (rosbag_recorder)
+* Count stored messages in `summary.yaml` and report what the writer cache dropped (rosbag_recorder)
 
 ## Refactoring
 

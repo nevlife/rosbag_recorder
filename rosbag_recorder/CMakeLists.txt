@@ -96,6 +96,9 @@ if(BUILD_TESTING)
   add_launch_test(test/test_record.launch.py
     TIMEOUT 180
     ENV ROS_DOMAIN_ID=87 TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/data)
+  add_launch_test(test/test_cache_drop.launch.py
+    TIMEOUT 120
+    ENV ROS_DOMAIN_ID=86 TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/data)
 endif()
 
 ament_export_dependencies(rclcpp rosbag_recorder_checks rosbag_recorder_msgs tf2_msgs yaml-cpp)

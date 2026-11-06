@@ -88,7 +88,8 @@ A session is a bag directory `<output_dir>/<YYYYmmdd_HHMMSS>_<profile>[_<label>]
   result; `END` with the end reason, size and marker count;
 - `/rosbag_recorder/health` once per second and `/rosbag_recorder/markers`;
 - `summary.yaml`: session id, profile, label, notes, host, start, end, duration, end reason,
-  size, preflight, per-topic type, written count and last status, and the markers.
+  size, preflight, per-topic type, stored and dropped counts and last status, and the markers.
+  `dropped` counts the messages that the writer cache lost; raise `max_cache_mb` if it is not 0.
 
 Marker kinds:
 

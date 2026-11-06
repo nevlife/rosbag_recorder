@@ -33,6 +33,7 @@
 #include "rosbag2_compression/sequential_compression_writer.hpp"
 #include "rosbag2_cpp/converter_options.hpp"
 #include "rosbag2_cpp/writer.hpp"
+#include "rosbag2_storage/metadata_io.hpp"
 #include "rosbag_recorder/config.hpp"
 #include "rosbag_recorder/session_info.hpp"
 #include "rosbag_recorder/stream.hpp"
@@ -890,7 +891,12 @@ private:
     paused_ = false;
     state_ = profile_ ? Health::PREVIEW : Health::IDLE;
     message_ = "stopped " + session_id_ + " (" + reason + ")";
-    write_summary(end);
+    const std::uint64_t dropped = write_summary(end);
+    if (dropped) {
+      message_ += ", writer cache dropped " + std::to_string(dropped) + " messages";
+      RCLCPP_WARN(get_logger(), "%s", message_.c_str());
+      return;
+    }
     RCLCPP_INFO(get_logger(), "%s", message_.c_str());
   }
 
@@ -933,8 +939,17 @@ private:
     return s;
   }
 
-  void write_summary(const Session & end)
+  // Writes summary.yaml and returns the messages that the writer cache dropped. The writer
+  // reports them only in a log line, so they show up as the gap to the counts in the closed bag.
+  std::uint64_t write_summary(const Session & end)
   {
+    std::map<std::string, std::uint64_t> stored;
+    for (const auto & t :
+      rosbag2_storage::MetadataIo().read_metadata(bag_path_).topics_with_message_count)
+    {
+      stored[t.topic_metadata.name] = t.message_count;
+    }
+    std::uint64_t dropped_total = 0;
     static const char * const kLevels[] = {"ok", "info", "warn", "error"};
     static const char * const kStatus[] = {"ok", "low", "stale", "waiting", "no_publisher",
       "latched_missing", "type_unavailable", "abnormal"};
@@ -958,7 +973,12 @@ private:
     for (const auto & t : last_health_.topics) {
       out << YAML::Key << t.name << YAML::Value << YAML::Flow << YAML::BeginMap;
       out << YAML::Key << "type" << YAML::Value << t.type;
-      out << YAML::Key << "written" << YAML::Value << streams_.at(t.name)->written();
+      const std::uint64_t handed = streams_.at(t.name)->written();
+      const std::uint64_t written = stored.count(t.name) ? stored.at(t.name) : 0;
+      const std::uint64_t dropped = handed > written ? handed - written : 0;
+      dropped_total += dropped;
+      out << YAML::Key << "written" << YAML::Value << written;
+      out << YAML::Key << "dropped" << YAML::Value << dropped;
       out << YAML::Key << "last_status" << YAML::Value << kStatus[t.status];
       out << YAML::EndMap;
     }
@@ -972,6 +992,7 @@ private:
     }
     out << YAML::EndSeq << YAML::EndMap;
     std::ofstream(fs::path(bag_path_) / "summary.yaml") << out.c_str() << "\n";
+    return dropped_total;
   }
 
   // ---- services ----------------------------------------------------------------------------

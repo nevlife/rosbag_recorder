@@ -22,6 +22,7 @@ float64 hz
 float64 age_s
 float64 size_kb
 uint64 received
+# Handed to the writer. Its cache can still drop them: summary.yaml has the stored counts.
 uint64 written
 uint32 publishers
 string[] issues
