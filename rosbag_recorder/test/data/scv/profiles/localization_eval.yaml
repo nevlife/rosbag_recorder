@@ -4,9 +4,9 @@ name: localization_eval
 description: localization rerun and evaluation with IMU, GNSS, LiDAR packets, wheel odometry, TF, localization output
 extends: base
 add_groups:
-- lidar
-- imu_gnss
-- vehicle
-- localization
-- control
-- tf
+  - lidar
+  - imu_gnss
+  - vehicle
+  - localization
+  - control
+  - tf

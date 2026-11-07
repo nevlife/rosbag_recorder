@@ -10,12 +10,12 @@
 version: 1
 heavy_threshold_kb: 500.0
 auto_markers:
-- topic: /vehicle/mux_status
-  label: drive mode (mux)
-- topic: /remote/cmd_mode
-  label: remote command mode
-- topic: /vehicle/estop_status
-  label: emergency stop
+  - topic: /vehicle/mux_status
+    label: drive mode (mux)
+  - topic: /remote/cmd_mode
+    label: remote command mode
+  - topic: /vehicle/estop_status
+    label: emergency stop
 value_checks:
   stamp_delay_max_s: 0.5
   stamp_future_max_s: 0.2

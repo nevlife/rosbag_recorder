@@ -1,7 +1,6 @@
 name: test
 description: launch test
 groups: [small, large, tf]
-sources: [counter]
 options:
   start_mode: wait_ready
   wait_ready_sec: 15

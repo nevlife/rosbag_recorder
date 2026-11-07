@@ -1,7 +1,8 @@
-#include "rosbag_recorder/config.hpp"
+#include "config.hpp"
 
 #include <algorithm>
 #include <filesystem>
+#include <map>
 #include <regex>
 #include <set>
 #include <string>
@@ -15,10 +16,10 @@ namespace
 
 namespace fs = std::filesystem;
 
-const std::regex kTopicName("^(/[A-Za-z_][A-Za-z0-9_]*)+$");
-const std::regex kGroupName("^[a-z][a-z0-9_]*$");
-const std::regex kProfileName("^[a-z0-9][a-z0-9_]*$");
-constexpr std::size_t kMaxDepth = 8;
+const std::regex topic_pattern("^(/[A-Za-z_][A-Za-z0-9_]*)+$");
+const std::regex group_pattern("^[a-z][a-z0-9_]*$");
+const std::regex profile_pattern("^[a-z0-9][a-z0-9_]*$");
+constexpr std::size_t max_depth = 8;
 
 std::string join(const std::vector<std::string> & items, const std::string & separator)
 {
@@ -30,8 +31,7 @@ std::string join(const std::vector<std::string> & items, const std::string & sep
 }
 
 void check_keys(
-  const YAML::Node & node, const std::set<std::string> & allowed,
-  const std::string & where)
+  const YAML::Node & node, const std::set<std::string> & allowed, const std::string & where)
 {
   std::vector<std::string> unknown;
   for (const auto & kv : node) {
@@ -54,7 +54,7 @@ void require_map(const YAML::Node & node, const std::string & where)
 std::string topic_name(const YAML::Node & node, const std::string & where)
 {
   const std::string name = node && node.IsScalar() ? node.as<std::string>() : "";
-  if (!std::regex_match(name, kTopicName)) {
+  if (!std::regex_match(name, topic_pattern)) {
     throw ConfigError(where + ": bad topic name '" + name + "' (e.g. /velodyne_points)");
   }
   return name;
@@ -136,8 +136,8 @@ TopicSpec topic_spec(
   }
   require_map(data, where);
   check_keys(
-    data, {"type", "hz", "required", "heavy", "size_kb", "monitor_via", "latched",
-      "description"}, where);
+    data, {"type", "hz", "required", "heavy", "latched", "description", "size_kb", "monitor_via"},
+    where);
   if (data["type"] && !data["type"].IsNull()) {
     const std::string type = data["type"].as<std::string>();
     if (std::count(type.begin(), type.end(), '/') != 2) {
@@ -148,32 +148,26 @@ TopicSpec topic_spec(
   t.hz = positive(data["hz"], where + ".hz");
   t.required = flag(data["required"], where + ".required");
   t.heavy = flag(data["heavy"], where + ".heavy");
-  t.size_kb = positive(data["size_kb"], where + ".size_kb");
-  if (data["monitor_via"] && !data["monitor_via"].IsNull()) {
-    t.monitor_via = topic_name(data["monitor_via"], where + ".monitor_via");
-  }
   t.latched = flag(data["latched"], where + ".latched");
   t.description = text(data["description"]);
   return t;
 }
 
-const std::map<std::string, std::vector<std::string>> kChoices{
-  {"storage", {"mcap", "sqlite3"}},
-  {"compression", {"none", "zstd"}},
-  {"heavy_qos", {"best_effort", "keep"}},
-  {"start_mode", {"wait_ready", "delay", "immediate"}},
+const std::map<std::string, std::vector<std::string>> choices_of{
+  {"storage", {"mcap", "sqlite3"}},       {"compression", {"none", "zstd"}},
+  {"heavy_qos", {"best_effort", "keep"}}, {"start_mode", {"wait_ready", "delay", "immediate"}},
   {"on_not_ready", {"abort", "start"}},
 };
 
 void read_choice(
-  const std::map<std::string, YAML::Node> & values, const std::string & key,
-  std::string & out, const std::string & where)
+  const std::map<std::string, YAML::Node> & values, const std::string & key, std::string & out,
+  const std::string & where)
 {
   const auto it = values.find(key);
   if (it == values.end()) {
     return;
   }
-  const auto & choices = kChoices.at(key);
+  const auto & choices = choices_of.at(key);
   const std::string v = it->second.IsScalar() ? it->second.as<std::string>() : "";
   if (std::find(choices.begin(), choices.end(), v) == choices.end()) {
     throw ConfigError(where + "." + key + ": '" + v + "' (choices: " + join(choices, ", ") + ")");
@@ -182,8 +176,8 @@ void read_choice(
 }
 
 void read_count(
-  const std::map<std::string, YAML::Node> & values, const std::string & key,
-  std::int64_t & out, const std::string & where)
+  const std::map<std::string, YAML::Node> & values, const std::string & key, std::int64_t & out,
+  const std::string & where)
 {
   const auto it = values.find(key);
   if (it == values.end()) {
@@ -196,8 +190,8 @@ void read_count(
 }
 
 void read_amount(
-  const std::map<std::string, YAML::Node> & values, const std::string & key,
-  double & out, const std::string & where)
+  const std::map<std::string, YAML::Node> & values, const std::string & key, double & out,
+  const std::string & where)
 {
   const auto it = values.find(key);
   if (it == values.end()) {
@@ -209,10 +203,10 @@ void read_amount(
   out = it->second.as<double>();
 }
 
-const std::set<std::string> kOptionKeys{
-  "storage", "compression", "split_duration_sec", "split_size_mb", "heavy_qos", "start_mode",
-  "wait_ready_sec", "start_delay_sec", "disk_warn_gb", "disk_stop_gb", "max_cache_mb",
-  "storage_preset", "storage_config_uri", "on_not_ready", "required_frames"};
+const std::set<std::string> option_keys{
+  "storage",      "compression",    "split_duration_sec", "split_size_mb", "heavy_qos",
+  "start_mode",   "wait_ready_sec", "start_delay_sec",    "disk_warn_gb",  "disk_stop_gb",
+  "max_cache_mb", "storage_preset", "storage_config_uri", "on_not_ready",  "required_frames"};
 
 }  // namespace
 
@@ -231,22 +225,21 @@ Catalog Catalog::load(const std::string & path)
 Catalog Catalog::parse(const YAML::Node & root, const std::string & where)
 {
   require_map(root, where);
+  // SCV writes heavy_threshold_kb, auto_markers, value_checks, size_kb and monitor_via; this
+  // recorder accepts them so an SCV folder loads unchanged, and does not use them.
   check_keys(
-    root, {"version", "heavy_threshold_kb", "groups", "auto_markers", "value_checks", "sources"},
-    where);
+    root, {"version", "groups", "heavy_threshold_kb", "auto_markers", "value_checks"}, where);
   Catalog c;
   if (root["version"]) {
     c.version = root["version"].as<int>();
   }
-  c.heavy_threshold_kb = positive(root["heavy_threshold_kb"], where + ".heavy_threshold_kb")
-    .value_or(500.0);
   std::map<std::string, std::string> seen;
   if (const auto groups = root["groups"]; groups && !groups.IsNull()) {
     require_map(groups, where + ".groups");
     for (const auto & g : groups) {
       const std::string gname = g.first.as<std::string>();
       const std::string gwhere = where + ".groups." + gname;
-      if (!std::regex_match(gname, kGroupName)) {
+      if (!std::regex_match(gname, group_pattern)) {
         throw ConfigError(gwhere + ": group names use lowercase letters, digits and _");
       }
       Group group{gname, "", {}};
@@ -269,55 +262,6 @@ Catalog Catalog::parse(const YAML::Node & root, const std::string & where)
         }
       }
       c.groups.push_back(group);
-    }
-  }
-  if (const auto markers = root["auto_markers"]; markers && !markers.IsNull()) {
-    for (std::size_t i = 0; i < markers.size(); ++i) {
-      const std::string mwhere = where + ".auto_markers[" + std::to_string(i) + "]";
-      require_map(markers[i], mwhere);
-      check_keys(markers[i], {"topic", "label", "field", "kind"}, mwhere);
-      AutoMarker m;
-      m.topic = topic_name(markers[i]["topic"], mwhere);
-      m.label = text(markers[i]["label"]);
-      m.field = text(markers[i]["field"]);
-      if (!text(markers[i]["kind"]).empty()) {
-        m.kind = text(markers[i]["kind"]);
-      }
-      c.auto_markers.push_back(m);
-    }
-  }
-  if (const auto checks = root["value_checks"]; checks && !checks.IsNull()) {
-    require_map(checks, where + ".value_checks");
-    for (const auto & kv : checks) {
-      const std::string key = kv.first.as<std::string>();
-      c.value_checks[key] = *positive(kv.second, where + ".value_checks." + key);
-    }
-  }
-  if (const auto sources = root["sources"]; sources && !sources.IsNull()) {
-    require_map(sources, where + ".sources");
-    for (const auto & s : sources) {
-      SourceSpec spec;
-      spec.name = s.first.as<std::string>();
-      const std::string swhere = where + ".sources." + spec.name;
-      require_map(s.second, swhere);
-      check_keys(s.second, {"plugin", "description", "params", "channels"}, swhere);
-      spec.plugin = text(s.second["plugin"]);
-      if (spec.plugin.empty()) {
-        throw ConfigError(swhere + ".plugin: required");
-      }
-      spec.description = text(s.second["description"]);
-      if (s.second["params"]) {
-        spec.params_yaml = YAML::Dump(s.second["params"]);
-      }
-      if (const auto channels = s.second["channels"]; channels && !channels.IsNull()) {
-        require_map(channels, swhere + ".channels");
-        for (const auto & ch : channels) {
-          const std::string cwhere = swhere + ".channels." + ch.first.as<std::string>();
-          const std::string name = topic_name(ch.first, cwhere);
-          spec.channels[name] = topic_spec(name, "", ch.second, cwhere);
-        }
-      }
-      c.sources[spec.name] = spec;
     }
   }
   return c;
@@ -363,7 +307,7 @@ RecordOptions RecordOptions::parse(
 {
   RecordOptions o;
   for (const auto & kv : values) {
-    if (!kOptionKeys.count(kv.first)) {
+    if (!option_keys.count(kv.first)) {
       throw ConfigError(where + ": unknown option " + kv.first);
     }
   }
@@ -433,11 +377,13 @@ Profile Profile::parse(const YAML::Node & root, const std::string & where)
 {
   require_map(root, where);
   check_keys(
-    root, {"name", "description", "extends", "abstract", "groups", "add_groups",
-      "exclude_groups", "topics", "exclude", "options", "sources", "exclude_sources"}, where);
+    root,
+    {"name", "description", "extends", "abstract", "groups", "add_groups", "exclude_groups",
+     "topics", "exclude", "options"},
+    where);
   Profile p;
   p.name = text(root["name"]);
-  if (!std::regex_match(p.name, kProfileName)) {
+  if (!std::regex_match(p.name, profile_pattern)) {
     throw ConfigError(where + ": name uses lowercase letters, digits and _ ('" + p.name + "')");
   }
   p.description = text(root["description"]);
@@ -455,13 +401,11 @@ Profile Profile::parse(const YAML::Node & root, const std::string & where)
       topic_name(YAML::Node(t), where + (list == &p.topics ? ".topics" : ".exclude"));
     }
   }
-  p.sources = strings(root["sources"], where + ".sources");
-  p.exclude_sources = strings(root["exclude_sources"], where + ".exclude_sources");
   if (const auto options = root["options"]; options && !options.IsNull()) {
     require_map(options, where + ".options");
     for (const auto & kv : options) {
       const std::string key = kv.first.as<std::string>();
-      if (!kOptionKeys.count(key)) {
+      if (!option_keys.count(key)) {
         throw ConfigError(where + ".options: unknown option " + key);
       }
       p.options[key] = kv.second;
@@ -478,13 +422,13 @@ std::string ResolvedProfile::to_yaml() const
   n["chain"] = chain;
   n["topics"] = topics;
   n["unknown_topics"] = unknown_topics;
-  n["sources"] = sources;
   n["options"] = options.to_yaml();
   return YAML::Dump(n);
 }
 
-ProfileStore::ProfileStore(std::string directory)
-: directory_(std::move(directory)) {}
+ProfileStore::ProfileStore(std::string directory) : directory_(std::move(directory))
+{
+}
 
 std::vector<std::string> ProfileStore::names() const
 {
@@ -528,10 +472,10 @@ ResolvedProfile ProfileStore::resolve(const std::string & name, const Catalog & 
 ResolvedProfile ProfileStore::resolve(
   const Profile & profile, const Catalog & catalog, std::vector<std::string> & stack) const
 {
-  if (stack.size() > kMaxDepth) {
+  if (stack.size() > max_depth) {
     throw ConfigError("inheritance too deep: " + join(stack, " -> "));
   }
-  std::set<std::string> topics, sources;
+  std::set<std::string> topics;
   std::map<std::string, YAML::Node> options;
   std::vector<std::string> chain{profile.name};
   if (!profile.extends.empty()) {
@@ -543,7 +487,6 @@ ResolvedProfile ProfileStore::resolve(
     const ResolvedProfile parent = resolve(load(profile.extends), catalog, stack);
     topics.insert(parent.topics.begin(), parent.topics.end());
     topics.insert(parent.unknown_topics.begin(), parent.unknown_topics.end());
-    sources.insert(parent.sources.begin(), parent.sources.end());
     const YAML::Node parent_options = parent.options.to_yaml();
     for (const auto & kv : parent_options) {
       options[kv.first.as<std::string>()] = kv.second;
@@ -551,17 +494,17 @@ ResolvedProfile ProfileStore::resolve(
     chain.insert(chain.end(), parent.chain.begin(), parent.chain.end());
   }
   auto group_set = [&](const std::vector<std::string> & names, const std::string & key) {
-      std::set<std::string> out;
-      for (const auto & g : names) {
-        try {
-          const auto & members = catalog.group(g).topics;
-          out.insert(members.begin(), members.end());
-        } catch (const ConfigError &) {
-          throw ConfigError(profile.name + "." + key + ": no group '" + g + "' in the catalog");
-        }
+    std::set<std::string> out;
+    for (const auto & g : names) {
+      try {
+        const auto & members = catalog.group(g).topics;
+        out.insert(members.begin(), members.end());
+      } catch (const ConfigError &) {
+        throw ConfigError(profile.name + "." + key + ": no group '" + g + "' in the catalog");
       }
-      return out;
-    };
+    }
+    return out;
+  };
   if (profile.groups) {
     topics = group_set(*profile.groups, "groups");
   }
@@ -575,15 +518,6 @@ ResolvedProfile ProfileStore::resolve(
   for (const auto & t : profile.exclude) {
     topics.erase(t);
   }
-  for (const auto & s : profile.sources) {
-    if (!catalog.sources.count(s)) {
-      throw ConfigError(profile.name + ".sources: no source '" + s + "' in the catalog");
-    }
-    sources.insert(s);
-  }
-  for (const auto & s : profile.exclude_sources) {
-    sources.erase(s);
-  }
   for (const auto & kv : profile.options) {
     options[kv.first] = kv.second;
   }
@@ -596,7 +530,6 @@ ResolvedProfile ProfileStore::resolve(
   for (const auto & t : catalog.sort_topics(topics)) {
     (catalog.topic(t) ? r.topics : r.unknown_topics).push_back(t);
   }
-  r.sources.assign(sources.begin(), sources.end());
   return r;
 }
 

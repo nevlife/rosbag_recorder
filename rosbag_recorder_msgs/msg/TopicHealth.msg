@@ -10,7 +10,7 @@ uint8 ABNORMAL=7
 
 string name
 string type
-# Empty for a ROS topic, else the source plugin's name.
+# Empty for a ROS topic, "flux" for a Flux input.
 string source
 uint8 status
 bool required

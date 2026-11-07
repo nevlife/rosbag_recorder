@@ -41,7 +41,13 @@ for scripts. A profile can combine `groups`, `add_groups`, `exclude_groups`, ind
 and `exclude`, and inherit another profile with `extends`. Abstract profiles cannot record.
 The desktop window does not list or edit profiles.
 
-Legacy catalog `auto_markers` and `value_checks` keys are accepted for file compatibility, but
-the recorder does not attach automatic value checks or field-change markers. The legacy
-`monitor_via` key is also accepted; each recorded input is monitored on its own subscription.
-Source plugins and the additional recording options remain described by the public headers.
+The SCV catalog keys `heavy_threshold_kb`, `auto_markers`, `value_checks`, `size_kb` and
+`monitor_via` are accepted so that an SCV folder loads unchanged. The recorder ignores them.
+Each recorded input is monitored on its own subscription.
+
+## Node parameters
+
+`config/rosbag_recorder.param.yaml` holds every node parameter. The node declares them without
+defaults, so a run without this file fails at start. `param_globs` is the exception: it lists the
+workspace files that are copied into the session, and it stays empty unless the file sets it,
+because a ROS parameter file cannot hold an empty list. `hz_tolerance` must be within 0.1 to 1.0.

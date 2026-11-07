@@ -1,12 +1,25 @@
 import sys
 
-from python_qt_binding.QtCore import Qt, QTimer, Signal
-from python_qt_binding.QtGui import QBrush, QColor
-from python_qt_binding.QtWidgets import (
-    QHBoxLayout, QHeaderView, QLabel, QPushButton, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout, QWidget)
-from rosbag_recorder_msgs.msg import Health, TopicSelection
-from rosbag_recorder_msgs.srv import ListTopics, SetTopics, Start, Status, Stop
+from python_qt_binding.QtCore import Qt
+from python_qt_binding.QtCore import QTimer
+from python_qt_binding.QtCore import Signal
+from python_qt_binding.QtGui import QBrush
+from python_qt_binding.QtGui import QColor
+from python_qt_binding.QtWidgets import QHBoxLayout
+from python_qt_binding.QtWidgets import QHeaderView
+from python_qt_binding.QtWidgets import QLabel
+from python_qt_binding.QtWidgets import QPushButton
+from python_qt_binding.QtWidgets import QTreeWidget
+from python_qt_binding.QtWidgets import QTreeWidgetItem
+from python_qt_binding.QtWidgets import QVBoxLayout
+from python_qt_binding.QtWidgets import QWidget
+from rosbag_recorder_msgs.msg import Health
+from rosbag_recorder_msgs.msg import TopicSelection
+from rosbag_recorder_msgs.srv import ListTopics
+from rosbag_recorder_msgs.srv import SetTopics
+from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Status
+from rosbag_recorder_msgs.srv import Stop
 from rqt_gui_py.plugin import Plugin
 from std_srvs.srv import Trigger
 
@@ -38,7 +51,8 @@ class RecorderWidget(QWidget):
         self.health_received.connect(self.on_health)
         self.replied.connect(self.on_reply)
         self.sub = node.create_subscription(
-            Health, PREFIX + 'health', lambda m: self.health_received.emit(m), 10)
+            Health, PREFIX + 'health', lambda m: self.health_received.emit(m), 10
+        )
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(1000)
@@ -65,11 +79,16 @@ class RecorderWidget(QWidget):
         self.start_button.clicked.connect(self.start)
         controls.addWidget(self.preview_button)
         controls.addWidget(self.start_button)
-        for title, service in (('Stop', 'stop'), ('Pause', 'pause'),
-                               ('Resume', 'resume'), ('Split', 'split')):
+        for title, service in (
+            ('Stop', 'stop'),
+            ('Pause', 'pause'),
+            ('Resume', 'resume'),
+            ('Split', 'split'),
+        ):
             button = QPushButton(title)
             button.clicked.connect(
-                lambda _, name=service: self.call(Stop if name == 'stop' else Trigger, name))
+                lambda _, name=service: self.call(Stop if name == 'stop' else Trigger, name)
+            )
             controls.addWidget(button)
         controls.addStretch()
         layout = QVBoxLayout(self)
@@ -101,9 +120,11 @@ class RecorderWidget(QWidget):
         future.add_done_callback(lambda f: self.replied.emit(name, f.result()))
 
     def selected_topics(self):
-        return [TopicSelection(name=name, transport=transport)
-                for (transport, name), item in self.items.items()
-                if item.checkState(0) == Qt.Checked]
+        return [
+            TopicSelection(name=name, transport=transport)
+            for (transport, name), item in self.items.items()
+            if item.checkState(0) == Qt.Checked
+        ]
 
     def selection_changed(self, item, column):
         if column == 0:
@@ -164,12 +185,14 @@ class RecorderWidget(QWidget):
                     group = QTreeWidgetItem(self.tree, [category])
                     group.setFlags(group.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsTristate)
                     groups[category] = group
-                item = QTreeWidgetItem(groups[category],
-                                       [topic.name, topic.transport.upper(), topic.type])
+                item = QTreeWidgetItem(
+                    groups[category], [topic.name, topic.transport.upper(), topic.type]
+                )
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 key = (topic.transport, topic.name)
                 item.setCheckState(
-                    0, checked.get(key, Qt.Checked if topic.selected else Qt.Unchecked))
+                    0, checked.get(key, Qt.Checked if topic.selected else Qt.Unchecked)
+                )
                 item.setToolTip(0, topic.name)
                 item.setToolTip(2, topic.type)
                 self.items[key] = item
@@ -201,8 +224,9 @@ class RecorderWidget(QWidget):
             health[key] = topic
         for key, item in self.items.items():
             topic = health.get(key)
-            status, color = (rows.STATUS.get(topic.status, ('unknown', None))
-                             if topic else ('-', None))
+            status, color = (
+                rows.STATUS.get(topic.status, ('unknown', None)) if topic else ('-', None)
+            )
             item.setText(3, status)
             item.setToolTip(3, '; '.join(topic.issues) if topic else '')
             item.setText(4, rows.number(topic.hz) if topic else '-')
@@ -219,14 +243,14 @@ class RecorderWidget(QWidget):
 
 
 class RecorderPlugin(Plugin):
-
     def __init__(self, context):
         super().__init__(context)
         self.setObjectName('RosbagRecorder')
         self._widget = RecorderWidget(context.node)
         if context.serial_number() > 1:
             self._widget.setWindowTitle(
-                f'{self._widget.windowTitle()} ({context.serial_number()})')
+                f'{self._widget.windowTitle()} ({context.serial_number()})'
+            )
         context.add_widget(self._widget)
 
     def shutdown_plugin(self):
@@ -235,4 +259,5 @@ class RecorderPlugin(Plugin):
 
 def main():
     from rqt_gui.main import Main
+
     sys.exit(Main().main(sys.argv, standalone='rosbag_recorder_rqt.recorder.RecorderPlugin'))

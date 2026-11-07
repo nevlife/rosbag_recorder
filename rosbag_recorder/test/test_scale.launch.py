@@ -1,18 +1,25 @@
 """A 500-topic profile: tick cost in preview and recording, memory over minutes."""
 
+import importlib.util
 import os
+from pathlib import Path
 import shutil
 import tempfile
 import time
 import unittest
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch_ros.actions import Node
 import launch_testing.actions
 import pytest
 import rclpy
-from rosbag_recorder_msgs.msg import Health, TopicHealth
-from rosbag_recorder_msgs.srv import Select, Start, Status, Stop
+from rosbag_recorder_msgs.msg import Health
+from rosbag_recorder_msgs.msg import TopicHealth
+from rosbag_recorder_msgs.srv import Select
+from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Status
+from rosbag_recorder_msgs.srv import Stop
 
 TOPICS = int(os.environ.get('SCALE_TOPICS', '500'))
 RECORD_S = float(os.environ.get('SCALE_RECORD_S', '150'))
@@ -26,22 +33,34 @@ DIR = tempfile.mkdtemp(prefix='rosbag_recorder_scale_')
 REPORT = os.environ.get('SCALE_REPORT')
 
 
+def recorder(*args, **kwargs):
+    """Build the container of the installed launch file, with its remaps."""
+    path = Path(get_package_share_directory('rosbag_recorder')) / 'launch' / 'recorder.launch.py'
+    spec = importlib.util.spec_from_file_location('recorder_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.recorder(*args, **kwargs)
+
+
 def write_config():
     groups = []
     for g in range(0, TOPICS, 50):
         topics = ''.join(
             f'      /scale/t{i}: {{type: sensor_msgs/msg/Imu, hz: 10.0'
             f'{", required: true" if i % 50 == 0 else ""}}}\n'
-            for i in range(g, min(g + 50, TOPICS)))
+            for i in range(g, min(g + 50, TOPICS))
+        )
         groups.append(f'  g{g // 50}:\n    topics:\n{topics}')
     os.makedirs(os.path.join(DIR, 'config', 'profiles'))
     with open(os.path.join(DIR, 'config', 'catalog.yaml'), 'w') as f:
         f.write('version: 1\ngroups:\n' + ''.join(groups))
     names = ', '.join(f'g{g // 50}' for g in range(0, TOPICS, 50))
     with open(os.path.join(DIR, 'config', 'profiles', 'scale.yaml'), 'w') as f:
-        f.write(f'name: scale\ngroups: [{names}]\n'
-                'options: {start_mode: immediate, split_duration_sec: 0, disk_warn_gb: 0.2, '
-                'disk_stop_gb: 0.1}\n')
+        f.write(
+            f'name: scale\ngroups: [{names}]\n'
+            'options: {start_mode: immediate, split_duration_sec: 0, disk_warn_gb: 0.2, '
+            'disk_stop_gb: 0.1}\n'
+        )
 
 
 def percentile(values, p):
@@ -52,17 +71,25 @@ def percentile(values, p):
 @pytest.mark.launch_test
 def generate_test_description():
     write_config()
-    recorder = Node(package='rosbag_recorder', executable='rosbag_recorder_node', output='screen',
-                    parameters=[{'config_dir': os.path.join(DIR, 'config'),
-                                 'output_dir': os.path.join(DIR, 'out')}])
-    publishers = Node(package='rosbag_recorder', executable='many_publishers', output='screen',
-                      parameters=[{'count': TOPICS, 'rate': 10.0}])
-    return LaunchDescription([recorder, publishers, launch_testing.actions.ReadyToTest()]), {
-        'recorder': recorder}
+    container = recorder(
+        overrides={
+            'config_dir': os.path.join(DIR, 'config'),
+            'output_dir': os.path.join(DIR, 'out'),
+        },
+        output='screen',
+    )
+    publishers = Node(
+        package='rosbag_recorder',
+        executable='many_publishers',
+        output='screen',
+        parameters=[{'count': TOPICS, 'rate': 10.0}],
+    )
+    return LaunchDescription([container, publishers, launch_testing.actions.ReadyToTest()]), {
+        'container': container
+    }
 
 
 class TestScale(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         rclpy.init()
@@ -100,8 +127,9 @@ class TestScale(unittest.TestCase):
                     return int(line.split()[1]) / 1024.0
         return 0.0
 
-    def test_scale(self, proc_info, recorder):
-        pid = proc_info[recorder].pid
+    def test_scale(self, proc_info, container):
+        proc_info.assertWaitForStartup(container, timeout=10)
+        pid = proc_info[container].pid
         selected, select_ms = self.call(Select, 'select', profile='scale')
         self.assertTrue(selected.success, selected.message)
         start = time.monotonic()
@@ -119,8 +147,9 @@ class TestScale(unittest.TestCase):
             status_ms.append(self.call(Status, 'status')[1])
             self.spin(0.5)
         preview_ticks = [h.tick_ms for h in self.healths]
-        graph_share = ((self.healths[-1].graph_reads - self.healths[0].graph_reads) /
-                       max(1, len(self.healths) - 1))
+        graph_share = (self.healths[-1].graph_reads - self.healths[0].graph_reads) / max(
+            1, len(self.healths) - 1
+        )
 
         started, _ = self.call(Start, 'start', label='scale')
         self.assertTrue(started.success, started.message)
@@ -134,7 +163,8 @@ class TestScale(unittest.TestCase):
         stopped, stop_ms = self.call(Stop, 'stop')
         self.assertTrue(stopped.success, stopped.message)
 
-        warm = rss[len(rss) // 3:]
+        warm_start = len(rss) // 3
+        warm = rss[warm_start:]
         third = max(1, len(warm) // 3)
         growth = sum(warm[-third:]) / third - sum(warm[:third]) / third
         lines = [

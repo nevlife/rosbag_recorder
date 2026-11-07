@@ -1,19 +1,18 @@
 #ifndef COMPAT_HPP_
 #define COMPAT_HPP_
 
-#include <map>
-#include <string>
-#include <vector>
-
 #include "rclcpp/qos.hpp"
 #include "rclcpp/version.h"
 #include "rosbag2_cpp/writer.hpp"
 #include "rosbag2_storage/storage_options.hpp"
 #include "rosbag2_storage/topic_metadata.hpp"
 
+#include <map>
+#include <string>
+#include <vector>
+
 // ROSBAG_RECORDER_ROSBAG2_MINOR comes from CMake: 15 on Humble, 26 on Jazzy.
 #if ROSBAG_RECORDER_ROSBAG2_MINOR >= 22
-#include "rosbag2_storage/message_definition.hpp"
 #include "rosbag2_storage/qos.hpp"
 #else
 #include "rosbag2_transport/qos.hpp"
@@ -73,24 +72,6 @@ inline bool split(rosbag2_cpp::Writer & writer)
   (void)writer;
   return false;
 #endif
-}
-
-// A source's own schema goes into the bag where rosbag2 takes one; elsewhere the storage
-// plugin looks the type up.
-inline void create_topic(
-  rosbag2_cpp::Writer & writer, const rosbag2_storage::TopicMetadata & topic,
-  const std::string & definition, const std::string & encoding)
-{
-#if ROSBAG_RECORDER_ROSBAG2_MINOR >= 22
-  if (!definition.empty()) {
-    writer.create_topic(topic, {topic.type, encoding, definition, ""});
-    return;
-  }
-#else
-  (void)definition;
-  (void)encoding;
-#endif
-  writer.create_topic(topic);
 }
 
 }  // namespace rosbag_recorder

@@ -4,15 +4,15 @@ name: perception_dataset
 description: training and labeling data with raw cameras, LiDAR packets (points converted after recording), TF, pose (very large)
 extends: base
 add_groups:
-- lidar_points
-- camera_info
-- camera_compressed
-- imu_gnss
-- vehicle
-- control
-- tf
+  - lidar_points
+  - camera_info
+  - camera_compressed
+  - imu_gnss
+  - vehicle
+  - control
+  - tf
 topics:
-- /front/scan
-- /rear/scan
+  - /front/scan
+  - /rear/scan
 options:
   split_duration_sec: 120

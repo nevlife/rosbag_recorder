@@ -1,21 +1,25 @@
-#include "rosbag_recorder/session_info.hpp"
+#include "session_info.hpp"
+
+#include "yaml-cpp/yaml.h"
 
 #include <openssl/evp.h>
 #include <pwd.h>
 #include <sys/statvfs.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
-
-#include "yaml-cpp/yaml.h"
 
 namespace rosbag_recorder
 {
@@ -24,21 +28,30 @@ namespace
 
 namespace fs = std::filesystem;
 
-constexpr std::size_t kMaxChanges = 50;
+constexpr std::size_t max_changes = 50;
 
 std::string run(const std::string & command)
 {
   std::string out;
   FILE * pipe = popen(command.c_str(), "r");
-  if (!pipe) {
-    return out;
-  }
   std::array<char, 4096> buffer{};
   std::size_t n;
   while ((n = fread(buffer.data(), 1, buffer.size(), pipe)) > 0) {
     out.append(buffer.data(), n);
   }
-  return pclose(pipe) == 0 ? out : "";
+  if (pclose(pipe) != 0) {
+    throw std::runtime_error("failed: " + command);
+  }
+  return out;
+}
+
+fs::path existing_parent(const std::string & path)
+{
+  fs::path p = fs::absolute(path);
+  while (!fs::exists(p)) {
+    p = p.parent_path();
+  }
+  return p;
 }
 
 std::string trim(const std::string & s)
@@ -57,7 +70,7 @@ std::vector<std::string> lines(const std::string & s)
 {
   std::vector<std::string> out;
   std::istringstream in(s);
-  for (std::string line; std::getline(in, line); ) {
+  for (std::string line; std::getline(in, line);) {
     if (!line.empty()) {
       out.push_back(line);
     }
@@ -69,31 +82,28 @@ YAML::Node repo_info(const std::string & path)
 {
   const std::string git = "git -C " + quote(path) + " ";
   YAML::Node n;
-  const std::string branch = trim(run(git + "rev-parse --abbrev-ref HEAD 2>/dev/null"));
+  const std::string branch = trim(run(git + "rev-parse --abbrev-ref HEAD"));
   n["branch"] = branch == "HEAD" ? "(detached)" : branch;
-  n["commit"] = trim(run(git + "rev-parse HEAD 2>/dev/null"));
-  const auto changes =
-    lines(run(git + "status --porcelain --ignore-submodules=all 2>/dev/null"));
+  n["commit"] = trim(run(git + "rev-parse HEAD"));
+  const auto changes = lines(run(git + "status --porcelain --ignore-submodules=all"));
   n["dirty"] = !changes.empty();
   if (!changes.empty()) {
     n["changes_total"] = changes.size();
     n["changes"] = std::vector<std::string>(
-      changes.begin(), changes.begin() + std::min(changes.size(), kMaxChanges));
+      changes.begin(), changes.begin() + std::min(changes.size(), max_changes));
   }
   return n;
 }
 
 }  // namespace
 
-std::optional<double> disk_free_gb(const std::string & path)
+double disk_free_gb(const std::string & path)
 {
-  fs::path p(path);
-  while (!fs::exists(p) && p != p.parent_path()) {
-    p = p.parent_path();
-  }
-  struct statvfs st {};
-  if (statvfs(p.c_str(), &st) != 0) {
-    return std::nullopt;
+  struct statvfs st
+  {
+  };
+  if (statvfs(existing_parent(path).c_str(), &st) != 0) {
+    throw std::system_error(errno, std::generic_category(), "statvfs " + path);
   }
   return static_cast<double>(st.f_bavail) * st.f_frsize / (1024.0 * 1024.0 * 1024.0);
 }
@@ -101,22 +111,15 @@ std::optional<double> disk_free_gb(const std::string & path)
 std::uint64_t directory_bytes(const std::string & path)
 {
   std::uint64_t total = 0;
-  std::error_code ec;
-  for (const auto & e : fs::directory_iterator(path, ec)) {
-    std::error_code size_ec;
-    const auto size = e.file_size(size_ec);
-    total += size_ec ? 0 : size;
+  for (const auto & e : fs::directory_iterator(path)) {
+    total += e.file_size();
   }
   return total;
 }
 
 bool writable(const std::string & directory)
 {
-  fs::path p(directory);
-  while (!fs::exists(p) && p != p.parent_path()) {
-    p = p.parent_path();
-  }
-  return access(p.c_str(), W_OK) == 0;
+  return access(existing_parent(directory).c_str(), W_OK) == 0;
 }
 
 std::string expand_user(const std::string & path)
@@ -154,7 +157,10 @@ std::string user_name()
   passwd * found = nullptr;
   std::array<char, 1024> buffer{};
   getpwuid_r(getuid(), &pw, buffer.data(), buffer.size(), &found);
-  return found ? found->pw_name : env("USER");
+  if (!found) {
+    throw std::runtime_error("no passwd entry for uid " + std::to_string(getuid()));
+  }
+  return found->pw_name;
 }
 
 std::string env(const char * name)
@@ -172,8 +178,7 @@ std::string git_snapshot(const std::string & workspace)
   n["workspace"] = workspace;
   n["superproject"] = repo_info(workspace);
   for (const auto & line :
-    lines(run("git -C " + quote(workspace) + " submodule status --recursive 2>/dev/null")))
-  {
+       lines(run("git -C " + quote(workspace) + " submodule status --recursive"))) {
     std::istringstream in(line.substr(1));
     std::string commit, path;
     in >> commit >> path;
@@ -214,14 +219,12 @@ std::vector<rosbag_recorder_msgs::msg::FileSnapshot> snapshot_files(
     return out;
   }
   std::vector<fs::path> files;
-  std::error_code ec;
-  for (auto it = fs::recursive_directory_iterator(workspace, ec);
-    it != fs::recursive_directory_iterator(); it.increment(ec))
-  {
+  for (auto it = fs::recursive_directory_iterator(workspace);
+       it != fs::recursive_directory_iterator(); ++it) {
     const std::string name = it->path().filename().string();
-    if (it->is_directory() &&
-      (name == "build" || name == "install" || name == "log" || name == ".git"))
-    {
+    if (
+      it->is_directory() &&
+      (name == "build" || name == "install" || name == "log" || name == ".git")) {
       it.disable_recursion_pending();
     } else if (it->is_regular_file()) {
       files.push_back(fs::relative(it->path(), workspace));

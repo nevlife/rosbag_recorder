@@ -1,6 +1,7 @@
 """Select ROS and raw Flux topics, record them together, and verify their bytes."""
 
 import gc
+import importlib.util
 from pathlib import Path
 import shutil
 import struct
@@ -8,18 +9,22 @@ import tempfile
 import time
 import unittest
 
+from ament_index_python.packages import get_package_share_directory
 import flux
 from flux_msgs.msg import FluxFrame
 from launch import LaunchDescription
-from launch_ros.actions import Node
 import launch_testing.actions
 import numpy as np
 import pytest
 import rclpy
 from rclpy.serialization import deserialize_message
 import rosbag2_py
-from rosbag_recorder_msgs.msg import Health, TopicSelection
-from rosbag_recorder_msgs.srv import ListTopics, SetTopics, Start, Stop
+from rosbag_recorder_msgs.msg import Health
+from rosbag_recorder_msgs.msg import TopicSelection
+from rosbag_recorder_msgs.srv import ListTopics
+from rosbag_recorder_msgs.srv import SetTopics
+from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Stop
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
@@ -27,19 +32,27 @@ ROOT = Path(tempfile.mkdtemp(prefix='recorder_selection_'))
 FINGERPRINT = 0xACDC1234
 
 
+def recorder(*args, **kwargs):
+    """Build the container of the installed launch file, with its remaps."""
+    path = Path(get_package_share_directory('rosbag_recorder')) / 'launch' / 'recorder.launch.py'
+    spec = importlib.util.spec_from_file_location('recorder_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.recorder(*args, **kwargs)
+
+
 @pytest.mark.launch_test
 def generate_test_description():
     """Launch with a category defined by topic name, independent of transport and type."""
     (ROOT / 'profiles').mkdir()
     (ROOT / 'catalog.yaml').write_text(
-        'groups:\n  sensors:\n    topics:\n      /selection/data: {}\n')
-    recorder = Node(package='rosbag_recorder', executable='rosbag_recorder_node',
-                    parameters=[{'config_dir': str(ROOT), 'output_dir': str(ROOT / 'bags')}])
-    return LaunchDescription([recorder, launch_testing.actions.ReadyToTest()])
+        'groups:\n  sensors:\n    topics:\n      /selection/data: {}\n'
+    )
+    container = recorder(overrides={'config_dir': str(ROOT), 'output_dir': str(ROOT / 'bags')})
+    return LaunchDescription([container, launch_testing.actions.ReadyToTest()])
 
 
 class TestSelection(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         rclpy.init()
@@ -74,8 +87,9 @@ class TestSelection(unittest.TestCase):
         health = []
         sub = self.node.create_subscription(Health, '/rosbag_recorder/health', health.append, 10)
         ros = self.node.create_publisher(String, '/selection/data', 10)
-        raw = flux.Publisher(self.node, '/selection/data', fingerprint=FINGERPRINT,
-                             slot_size=4096, slot_count=4)
+        raw = flux.Publisher(
+            self.node, '/selection/data', fingerprint=FINGERPRINT, slot_size=4096, slot_count=4
+        )
         other = flux.Publisher(self.node, '/selection/other', slot_size=4096, slot_count=4)
         phase = [1]
 
@@ -89,18 +103,30 @@ class TestSelection(unittest.TestCase):
         try:
             self.until(lambda: len(self.call(ListTopics, 'topics').topics) >= 3)
             topics = self.call(ListTopics, 'topics').topics
-            self.assertEqual({t.transport for t in topics if t.name == '/selection/data'},
-                             {'ros', 'flux'})
-            self.assertTrue(all(t.group == 'sensors' for t in topics
-                                if t.name == '/selection/data'))
+            self.assertEqual(
+                {t.transport for t in topics if t.name == '/selection/data'}, {'ros', 'flux'}
+            )
+            self.assertTrue(
+                all(t.group == 'sensors' for t in topics if t.name == '/selection/data')
+            )
             self.assertEqual(next(t.group for t in topics if t.name == '/selection/other'), '')
             self.assertTrue(self.call(SetTopics, 'set_topics', topics=selected).success)
-            self.assertFalse(self.call(SetTopics, 'set_topics', topics=[
-                TopicSelection(name='/selection/data', transport='invalid')]).success)
+            self.assertFalse(
+                self.call(
+                    SetTopics,
+                    'set_topics',
+                    topics=[TopicSelection(name='/selection/data', transport='invalid')],
+                ).success
+            )
             self.assertTrue(self.call(Start, 'start').success)
             self.assertFalse(self.call(SetTopics, 'set_topics', topics=[]).success)
-            self.until(lambda: health and len(health[-1].topics) == 2 and
-                       all(t.written > 10 for t in health[-1].topics))
+            self.until(
+                lambda: (
+                    health
+                    and len(health[-1].topics) == 2
+                    and all(t.written > 10 for t in health[-1].topics)
+                )
+            )
             self.assertTrue(self.call(Trigger, 'pause').success)
             phase[0] = 2
             deadline = time.monotonic() + 1.3
@@ -113,8 +139,10 @@ class TestSelection(unittest.TestCase):
             stopped = self.call(Stop, 'stop')
             self.assertTrue(stopped.success)
             reader = rosbag2_py.SequentialReader()
-            reader.open(rosbag2_py.StorageOptions(uri=stopped.bag_path),
-                        rosbag2_py.ConverterOptions('cdr', 'cdr'))
+            reader.open(
+                rosbag2_py.StorageOptions(uri=stopped.bag_path),
+                rosbag2_py.ConverterOptions('cdr', 'cdr'),
+            )
             names = {t.name: t.type for t in reader.get_all_topics_and_types()}
             self.assertEqual(names['/selection/data'], 'std_msgs/msg/String')
             self.assertEqual(names['/selection/data/flux'], 'flux_msgs/msg/FluxFrame')
@@ -148,15 +176,25 @@ class TestSelection(unittest.TestCase):
         health = []
         sub = self.node.create_subscription(Health, '/rosbag_recorder/health', health.append, 10)
         publishers = [
-            flux.Publisher(self.node, '/selection/restart', fingerprint=FINGERPRINT,
-                           slot_size=4096, slot_count=4)]
+            flux.Publisher(
+                self.node,
+                '/selection/restart',
+                fingerprint=FINGERPRINT,
+                slot_size=4096,
+                slot_count=4,
+            )
+        ]
         phase = [1]
         timer = self.node.create_timer(
-            0.03, lambda: publishers[0] and
-            publishers[0].publish(np.array([phase[0]], dtype=np.uint8)))
+            0.03,
+            lambda: publishers[0] and publishers[0].publish(np.array([phase[0]], dtype=np.uint8)),
+        )
         try:
-            self.until(lambda: any(t.name == '/selection/restart' for t in
-                                   self.call(ListTopics, 'topics').topics))
+            self.until(
+                lambda: any(
+                    t.name == '/selection/restart' for t in self.call(ListTopics, 'topics').topics
+                )
+            )
             selection = TopicSelection(name='/selection/restart', transport='flux')
             self.assertTrue(self.call(SetTopics, 'set_topics', topics=[selection]).success)
             self.assertTrue(self.call(Start, 'start').success)
@@ -165,19 +203,27 @@ class TestSelection(unittest.TestCase):
             publishers[0] = None
             gc.collect()
             self.until(lambda: health and health[-1].topics[0].publishers == 0)
-            entry = next(t for t in self.call(ListTopics, 'topics').topics
-                         if t.name == '/selection/restart')
+            entry = next(
+                t for t in self.call(ListTopics, 'topics').topics if t.name == '/selection/restart'
+            )
             self.assertTrue(entry.selected)
             self.assertEqual(entry.publishers, 0)
             phase[0] = 2
-            publishers[0] = flux.Publisher(self.node, '/selection/restart',
-                                           fingerprint=FINGERPRINT, slot_size=8192, slot_count=4)
+            publishers[0] = flux.Publisher(
+                self.node,
+                '/selection/restart',
+                fingerprint=FINGERPRINT,
+                slot_size=8192,
+                slot_count=4,
+            )
             self.until(lambda: health[-1].topics[0].written > before + 5)
             stopped = self.call(Stop, 'stop')
             self.assertTrue(stopped.success)
             reader = rosbag2_py.SequentialReader()
-            reader.open(rosbag2_py.StorageOptions(uri=stopped.bag_path),
-                        rosbag2_py.ConverterOptions('cdr', 'cdr'))
+            reader.open(
+                rosbag2_py.StorageOptions(uri=stopped.bag_path),
+                rosbag2_py.ConverterOptions('cdr', 'cdr'),
+            )
             sizes, values = set(), set()
             while reader.has_next():
                 name, data, _ = reader.read_next()
@@ -193,10 +239,19 @@ class TestSelection(unittest.TestCase):
             self.assertTrue(self.call(SetTopics, 'set_topics', topics=[selection]).success)
             started = self.call(Start, 'start')
             self.assertTrue(started.success)
-            publishers[0] = flux.Publisher(self.node, '/selection/restart',
-                                           fingerprint=FINGERPRINT, slot_size=4096, slot_count=4)
-            self.until(lambda: health[-1].session_id == started.session_id and
-                       health[-1].topics[0].written > 5)
+            publishers[0] = flux.Publisher(
+                self.node,
+                '/selection/restart',
+                fingerprint=FINGERPRINT,
+                slot_size=4096,
+                slot_count=4,
+            )
+            self.until(
+                lambda: (
+                    health[-1].session_id == started.session_id
+                    and health[-1].topics[0].written > 5
+                )
+            )
             self.assertTrue(self.call(Stop, 'stop').success)
             self.assertTrue(self.call(SetTopics, 'set_topics', topics=[]).success)
         finally:

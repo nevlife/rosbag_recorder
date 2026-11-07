@@ -1,24 +1,40 @@
 """Exercise profile changes, start validation, value recovery and publisher QoS changes."""
 
+import importlib.util
 from pathlib import Path
 import shutil
 import tempfile
 import time
 import unittest
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch_ros.actions import Node
 import launch_testing.actions
 import pytest
 import rclpy
-from rclpy.qos import QoSProfile, ReliabilityPolicy
-from rosbag_recorder_msgs.msg import Health, Marker, TopicHealth
-from rosbag_recorder_msgs.srv import Select, Start, Status, Stop
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
+from rosbag_recorder_msgs.msg import Health
+from rosbag_recorder_msgs.msg import Marker
+from rosbag_recorder_msgs.msg import TopicHealth
+from rosbag_recorder_msgs.srv import Select
+from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Status
+from rosbag_recorder_msgs.srv import Stop
 from sensor_msgs.msg import Imu
 from std_msgs.msg import String
 import yaml
 
 ROOT = Path(tempfile.mkdtemp(prefix='recorder_lifecycle_'))
+
+
+def recorder(*args, **kwargs):
+    """Build the container of the installed launch file, with its remaps."""
+    path = Path(get_package_share_directory('rosbag_recorder')) / 'launch' / 'recorder.launch.py'
+    spec = importlib.util.spec_from_file_location('recorder_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.recorder(*args, **kwargs)
 
 
 @pytest.mark.launch_test
@@ -32,24 +48,26 @@ def generate_test_description():
         options = {'start_mode': 'immediate', 'disk_warn_gb': 0, 'disk_stop_gb': 0}
         if name == 'disk':
             options.update(disk_warn_gb=1e12, disk_stop_gb=1e12)
-        profile = {'name': name, 'groups': [name] if name in groups else [],
-                   'abstract': name == 'abstract', 'options': options}
+        profile = {
+            'name': name,
+            'groups': [name] if name in groups else [],
+            'abstract': name == 'abstract',
+            'options': options,
+        }
         (ROOT / 'profiles' / f'{name}.yaml').write_text(yaml.safe_dump(profile))
-    nodes = [Node(package='rosbag_recorder', executable='rosbag_recorder_node',
-                  parameters=[{'config_dir': str(ROOT), 'output_dir': str(ROOT / 'bags')}])]
+    nodes = [recorder(overrides={'config_dir': str(ROOT), 'output_dir': str(ROOT / 'bags')})]
     for name in ('abstract', 'disk'):
-        remappings = [(f'/rosbag_recorder/{topic}', f'/{name}/{topic}')
-                      for topic in ('health', 'session', 'markers')]
-        nodes.append(Node(
-            package='rosbag_recorder', executable='rosbag_recorder_node', name=name,
-            remappings=remappings,
-            parameters=[{'config_dir': str(ROOT), 'output_dir': str(ROOT / name),
-                         'profile': name, 'autostart': True}]))
+        overrides = {
+            'config_dir': str(ROOT),
+            'output_dir': str(ROOT / name),
+            'profile': name,
+            'autostart': True,
+        }
+        nodes.append(recorder(name, overrides))
     return LaunchDescription([*nodes, launch_testing.actions.ReadyToTest()])
 
 
 class TestLifecycle(unittest.TestCase):
-
     @classmethod
     def setUpClass(cls):
         rclpy.init()
@@ -110,9 +128,11 @@ class TestLifecycle(unittest.TestCase):
     def test_3_zero_imu_values_are_recorded_without_semantic_issues(self):
         health, markers = [], []
         health_sub = self.node.create_subscription(
-            Health, '/rosbag_recorder/health', health.append, 10)
+            Health, '/rosbag_recorder/health', health.append, 10
+        )
         marker_sub = self.node.create_subscription(
-            Marker, '/rosbag_recorder/markers', markers.append, 10)
+            Marker, '/rosbag_recorder/markers', markers.append, 10
+        )
         publisher = self.node.create_publisher(Imu, '/lifecycle/imu', 10)
         self.assertTrue(self.call(Select, 'select', profile='imu').success)
         self.assertTrue(self.call(Start, 'start', force=True).success)
@@ -138,8 +158,11 @@ class TestLifecycle(unittest.TestCase):
         timer = self.node.create_timer(0.05, lambda: publisher.publish(String(data='qos')))
 
         def topic():
-            return next((t for t in health[-1].topics if t.name == '/lifecycle/b'), None) \
-                if health else None
+            return (
+                next((t for t in health[-1].topics if t.name == '/lifecycle/b'), None)
+                if health
+                else None
+            )
 
         try:
             self.until(lambda: topic() and topic().written > 0)

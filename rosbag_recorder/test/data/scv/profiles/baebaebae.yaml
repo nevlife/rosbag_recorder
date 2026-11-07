@@ -1,19 +1,19 @@
 # SCV Logger recording profile. Saving from the GUI (profile tab) rewrites this file.
 # With extends naming a parent, only the differences from the parent are written.
 name: baebaebae
-description: ''
+description: ""
 extends: base
 add_groups:
-- lidar_points
-- camera_info
-- camera_raw
-- vehicle
-- tf
+  - lidar_points
+  - camera_info
+  - camera_raw
+  - vehicle
+  - tf
 topics:
-- /front/scan
-- /rear/scan
-- /vectornav/imu
-- /vectornav/pose
-- /ublox_gps_node/fix
-- /ublox_gps_node/fix_velocity
-- /final_cmd
+  - /front/scan
+  - /rear/scan
+  - /vectornav/imu
+  - /vectornav/pose
+  - /ublox_gps_node/fix
+  - /ublox_gps_node/fix_velocity
+  - /final_cmd

@@ -2,7 +2,9 @@
 
 import math
 
-from rosbag_recorder_msgs.msg import CheckResult, Health, TopicHealth
+from rosbag_recorder_msgs.msg import CheckResult
+from rosbag_recorder_msgs.msg import Health
+from rosbag_recorder_msgs.msg import TopicHealth
 
 STATES = {
     Health.IDLE: 'idle',

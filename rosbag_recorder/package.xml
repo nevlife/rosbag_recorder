@@ -9,10 +9,9 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>libssl-dev</depend>
   <depend>flux_cpp</depend>
   <depend>flux_msgs</depend>
-  <depend>pluginlib</depend>
+  <depend>libssl-dev</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>rmw</depend>
@@ -20,34 +19,33 @@
   <depend>rosbag2_cpp</depend>
   <depend>rosbag2_storage</depend>
   <depend>rosbag2_transport</depend>
-  <depend>rosbag_recorder_checks</depend>
   <depend>rosbag_recorder_msgs</depend>
-  <depend>rosbag_recorder_source</depend>
   <depend>std_srvs</depend>
   <depend>tf2_msgs</depend>
   <depend>yaml_cpp_vendor</depend>
 
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>flux_components</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>rosbag2_compression_zstd</exec_depend>
   <exec_depend>rosbag2_storage_default_plugins</exec_depend>
   <exec_depend>rosbag2_storage_mcap</exec_depend>
 
-  <test_depend>ament_cmake_gtest</test_depend>
-  <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_cmake_cpplint</test_depend>
   <test_depend>ament_cmake_flake8</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_cmake_pep257</test_depend>
-  <test_depend>ament_cmake_uncrustify</test_depend>
   <test_depend>ament_cmake_xmllint</test_depend>
-  <test_depend>geometry_msgs</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
   <test_depend>flux_py</test_depend>
-  <test_depend>python3-numpy</test_depend>
-  <test_depend>rosbag2_py</test_depend>
+  <test_depend>geometry_msgs</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>launch_testing_ros</test_depend>
+  <test_depend>python3-numpy</test_depend>
   <test_depend>python3-yaml</test_depend>
   <test_depend>rclpy</test_depend>
   <test_depend>ros2bag</test_depend>
+  <test_depend>rosbag2_py</test_depend>
   <test_depend>sensor_msgs</test_depend>
   <test_depend>std_msgs</test_depend>
 

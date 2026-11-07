@@ -1,18 +1,18 @@
-#ifndef ROSBAG_RECORDER__SESSION_INFO_HPP_
-#define ROSBAG_RECORDER__SESSION_INFO_HPP_
+#ifndef SESSION_INFO_HPP_
+#define SESSION_INFO_HPP_
+
+#include "rosbag_recorder_msgs/msg/file_snapshot.hpp"
 
 #include <cstdint>
 #include <ctime>
-#include <optional>
 #include <string>
 #include <vector>
-
-#include "rosbag_recorder_msgs/msg/file_snapshot.hpp"
 
 namespace rosbag_recorder
 {
 
-std::optional<double> disk_free_gb(const std::string & path);
+// Of the file system that holds `path`, or the nearest existing parent while it does not exist.
+double disk_free_gb(const std::string & path);
 std::uint64_t directory_bytes(const std::string & path);
 bool writable(const std::string & directory);
 std::string expand_user(const std::string & path);
@@ -34,4 +34,4 @@ std::string sha256(const std::string & data);
 
 }  // namespace rosbag_recorder
 
-#endif  // ROSBAG_RECORDER__SESSION_INFO_HPP_
+#endif  // SESSION_INFO_HPP_

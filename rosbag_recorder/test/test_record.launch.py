@@ -1,6 +1,8 @@
-"""Record ROS topics (one of 4 MiB at 10 Hz) and a source plugin, then read the bag back."""
+"""Record ROS topics (one of 4 MiB at 10 Hz), then read the bag back."""
 
+import importlib.util
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -8,14 +10,20 @@ import tempfile
 import time
 import unittest
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess
-from launch_ros.actions import Node
 import launch_testing.actions
 import pytest
 import rclpy
-from rosbag_recorder_msgs.msg import Health, Session, TopicHealth
-from rosbag_recorder_msgs.srv import Mark, Select, Start, Status, Stop
+from rosbag_recorder_msgs.msg import Health
+from rosbag_recorder_msgs.msg import Session
+from rosbag_recorder_msgs.msg import TopicHealth
+from rosbag_recorder_msgs.srv import Mark
+from rosbag_recorder_msgs.srv import Select
+from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Status
+from rosbag_recorder_msgs.srv import Stop
 from std_srvs.srv import Trigger
 import yaml
 
@@ -23,21 +31,32 @@ OUT = tempfile.mkdtemp(prefix='rosbag_recorder_test_')
 SPLITS = os.environ.get('ROS_DISTRO') != 'humble'
 
 
+def recorder(*args, **kwargs):
+    """Build the container of the installed launch file, with its remaps."""
+    path = Path(get_package_share_directory('rosbag_recorder')) / 'launch' / 'recorder.launch.py'
+    spec = importlib.util.spec_from_file_location('recorder_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.recorder(*args, **kwargs)
+
+
 @pytest.mark.launch_test
 def generate_test_description():
     """Start the publishers and the recorder node."""
     here = os.path.dirname(os.path.abspath(__file__))
     data = os.path.join(os.environ['TEST_DATA_DIR'], 'launch')
-    return LaunchDescription([
-        ExecuteProcess(cmd=[sys.executable, os.path.join(here, 'publishers.py')], output='screen'),
-        Node(package='rosbag_recorder', executable='rosbag_recorder_node', output='screen',
-             parameters=[{'config_dir': data, 'output_dir': OUT}]),
-        launch_testing.actions.ReadyToTest(),
-    ])
+    return LaunchDescription(
+        [
+            ExecuteProcess(
+                cmd=[sys.executable, os.path.join(here, 'publishers.py')], output='screen'
+            ),
+            recorder(overrides={'config_dir': data, 'output_dir': OUT}, output='screen'),
+            launch_testing.actions.ReadyToTest(),
+        ]
+    )
 
 
 class TestRecord(unittest.TestCase):
-
     bag = None
     live = None
 
@@ -104,18 +123,23 @@ class TestRecord(unittest.TestCase):
         self.assertEqual(live['/test/points'].status, TopicHealth.OK)
         self.assertGreater(live['/test/points'].size_kb, 4000)
         self.assertEqual(live['/test/chatter'].status, TopicHealth.OK)
-        self.assertEqual(live['/counter/value'].source, 'counter')
-        self.assertEqual(live['/counter/value'].status, TopicHealth.OK)
-        self.assertFalse(live['/counter/imu'].values)
         self.assertFalse(live['/test/imu'].values)
         self.assertEqual(live['/tf_static'].status, TopicHealth.OK)
 
     def test_3_bag_info(self):
-        info = subprocess.run(['ros2', 'bag', 'info', self.bag], capture_output=True, text=True,
-                              check=True).stdout
-        for topic in ('/test/points', '/test/chatter', '/test/imu', '/test/mode', '/tf_static',
-                      '/counter/value', '/counter/imu', '/rosbag_recorder/session',
-                      '/rosbag_recorder/health', '/rosbag_recorder/markers'):
+        info = subprocess.run(
+            ['ros2', 'bag', 'info', self.bag], capture_output=True, text=True, check=True
+        ).stdout
+        for topic in (
+            '/test/points',
+            '/test/chatter',
+            '/test/imu',
+            '/test/mode',
+            '/tf_static',
+            '/rosbag_recorder/session',
+            '/rosbag_recorder/health',
+            '/rosbag_recorder/markers',
+        ):
             self.assertIn(topic, info)
         self.assertRegex(info, r'/tf_static \| Type: tf2_msgs/msg/TFMessage \| Count: 1 ')
         summary = yaml.safe_load(open(os.path.join(self.bag, 'summary.yaml')))
@@ -129,8 +153,10 @@ class TestRecord(unittest.TestCase):
         except ImportError:
             self.skipTest('rosbag2_dataset is not on PYTHONPATH')
         with rd.open(self.bag) as bag:
-            sessions = [bag.topic('/rosbag_recorder/session')[i][1]
-                        for i in range(len(bag.topic('/rosbag_recorder/session')))]
+            sessions = [
+                bag.topic('/rosbag_recorder/session')[i][1]
+                for i in range(len(bag.topic('/rosbag_recorder/session')))
+            ]
             self.assertEqual([s.event for s in sessions], [Session.START, Session.END])
             self.assertEqual(sessions[0].profile, 'test')
             self.assertEqual(sessions[0].label, 'launch test')
@@ -146,15 +172,11 @@ class TestRecord(unittest.TestCase):
             marks = bag.topic('/rosbag_recorder/markers')
             kinds = [marks[i][1].kind for i in range(len(marks))]
             texts = [marks[i][1].text for i in range(len(marks))]
-            for kind in ('note', 'pause', 'resume', 'count') + ('split',) * SPLITS:
+            for kind in ('note', 'pause', 'resume') + ('split',) * SPLITS:
                 self.assertIn(kind, kinds)
             self.assertIn('hello', texts)
             self.assertNotIn('mode', kinds)
 
-            counter = bag.topic('/counter/value')
-            values = [counter[i][1].data for i in range(len(counter))]
-            self.assertGreater(len(values), 40)
-            self.assertEqual(values, sorted(values))
             tf = bag.topic('/tf_static')
             self.assertEqual(tf[0][1].transforms[0].child_frame_id, 'base_link')
             points = bag.topic('/test/points')

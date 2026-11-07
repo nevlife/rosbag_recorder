@@ -5,8 +5,11 @@ import array
 from geometry_msgs.msg import TransformStamped
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile
-from sensor_msgs.msg import Imu, PointCloud2, PointField
+from rclpy.qos import DurabilityPolicy
+from rclpy.qos import QoSProfile
+from sensor_msgs.msg import Imu
+from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointField
 from std_msgs.msg import String
 from tf2_msgs.msg import TFMessage
 
@@ -14,7 +17,6 @@ POINTS = 262144
 
 
 class Publishers(Node):
-
     def __init__(self):
         super().__init__('test_publishers')
         self.chatter = self.create_publisher(String, '/test/chatter', 10)
@@ -30,8 +32,10 @@ class Publishers(Node):
         self.tf_static.publish(TFMessage(transforms=[t]))
         cloud = PointCloud2(height=1, width=POINTS, point_step=16, row_step=16 * POINTS)
         cloud.header.frame_id = 'lidar'
-        cloud.fields = [PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1)
-                        for i, n in enumerate(['x', 'y', 'z', 'intensity'])]
+        cloud.fields = [
+            PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1)
+            for i, n in enumerate(['x', 'y', 'z', 'intensity'])
+        ]
         cloud.data = array.array('B', bytes(16 * POINTS))
         self.cloud = cloud
         self.count = 0

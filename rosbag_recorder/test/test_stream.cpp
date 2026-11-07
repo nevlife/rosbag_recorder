@@ -1,14 +1,17 @@
+#include "rclcpp/serialization.hpp"
+#include "stream.hpp"
+
+#include "tf2_msgs/msg/tf_message.hpp"
+
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <deque>
 #include <memory>
+#include <optional>
+#include <set>
 #include <string>
-
-#include "rclcpp/serialization.hpp"
-#include "rosbag_recorder/session_info.hpp"
-#include "rosbag_recorder/stream.hpp"
-#include "std_msgs/msg/string.hpp"
+#include <vector>
 
 using rosbag_recorder::evaluate_rate;
 using rosbag_recorder::Stream;
@@ -27,38 +30,16 @@ std::deque<double> ticks(double start, double period, int n)
   return d;
 }
 
-rclcpp::SerializedMessage text(const std::string & s)
+rclcpp::SerializedMessage tf_message(const std::string & parent, const std::string & child)
 {
-  std_msgs::msg::String m;
-  m.data = s;
+  tf2_msgs::msg::TFMessage m;
+  m.transforms.resize(1);
+  m.transforms[0].header.frame_id = parent;
+  m.transforms[0].child_frame_id = child;
   rclcpp::SerializedMessage out;
-  rclcpp::Serialization<std_msgs::msg::String>().serialize_message(&m, &out);
+  rclcpp::Serialization<tf2_msgs::msg::TFMessage>().serialize_message(&m, &out);
   return out;
 }
-
-class Flag : public rosbag_recorder_checks::Check
-{
-public:
-  bool accepts(const rosbag_recorder_checks::TopicInfo &) const override {return true;}
-  void configure(
-    const rosbag_recorder_checks::TopicInfo &, const rosbag_recorder_checks::Thresholds &)
-  override {}
-  void on_message(const rclcpp::SerializedMessage &, double) override {++n;}
-  bool evaluate(const rosbag_recorder_checks::Context &, rosbag_recorder_checks::Result & r)
-  override
-  {
-    if (n == 0) {
-      return false;
-    }
-    if (bad) {
-      r.issues.push_back("bad");
-    }
-    n = 0;
-    return true;
-  }
-  int n{0};
-  bool bad{false};
-};
 
 }  // namespace
 
@@ -68,8 +49,7 @@ TEST(Rate, Statuses)
   EXPECT_EQ(ok.status, TopicHealth::OK);
   EXPECT_NEAR(ok.hz, 10.0, 0.01);
   EXPECT_EQ(
-    evaluate_rate(10.0, ticks(0, 0.2, 25), 25, 5.0, 0.8, 1, false, false).status,
-    TopicHealth::LOW);
+    evaluate_rate(10.0, ticks(0, 0.2, 25), 25, 5.0, 0.8, 1, false, false).status, TopicHealth::LOW);
   EXPECT_EQ(
     evaluate_rate(10.0, ticks(0, 0.1, 10), 10, 5.0, 0.8, 1, false, false).status,
     TopicHealth::STALE);
@@ -78,14 +58,11 @@ TEST(Rate, Statuses)
     TopicHealth::NO_PUBLISHER);
   EXPECT_EQ(evaluate_rate(10.0, {}, 0, 5.0, 0.8, 1, false, false).status, TopicHealth::WAITING);
   EXPECT_EQ(
-    evaluate_rate(10.0, {}, 0, 5.0, 0.8, 0, false, false).status,
-    TopicHealth::NO_PUBLISHER);
+    evaluate_rate(10.0, {}, 0, 5.0, 0.8, 0, false, false).status, TopicHealth::NO_PUBLISHER);
   EXPECT_EQ(
     evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 0, true, false).status,
     TopicHealth::LATCHED_MISSING);
-  EXPECT_EQ(
-    evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 1, true, false).status,
-    TopicHealth::OK);
+  EXPECT_EQ(evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 1, true, false).status, TopicHealth::OK);
   EXPECT_EQ(
     evaluate_rate(std::nullopt, {}, 0, 5.0, 0.8, 1, false, true).status,
     TopicHealth::TYPE_UNAVAILABLE);
@@ -94,68 +71,41 @@ TEST(Rate, Statuses)
     TopicHealth::OK);
 }
 
-TEST(Stream, ReportAndHeldIssues)
+TEST(Stream, Report)
 {
-  Stream s(StreamSpec{"/s", "std_msgs/msg/String", "", 10.0, true, false, false, true});
-  auto flag = std::make_shared<Flag>();
-  s.set_checks({flag});
+  Stream s(StreamSpec{"/tf", "tf2_msgs/msg/TFMessage", "", 10.0, true, false, false});
   s.publishers = 1;
   for (int i = 0; i < 20; ++i) {
-    s.receive(text("x"), 100.0 + i * 0.1, 0);
+    s.receive(tf_message("map", "odom"), 100.0 + i * 0.1);
   }
-  auto h = s.report(102.0, 10.0, 0.8, false);
+  s.count_written();
+  auto h = s.report(102.0, 0.8);
   EXPECT_EQ(h.status, TopicHealth::OK);
   EXPECT_EQ(h.received, 20U);
+  EXPECT_EQ(h.written, 1U);
   EXPECT_GT(h.size_kb, 0.0);
-  flag->bad = true;
-  s.receive(text("x"), 102.0, 0);
-  h = s.report(102.1, 11.0, 0.8, false);
-  EXPECT_EQ(h.status, TopicHealth::ABNORMAL);
-  EXPECT_EQ(h.issues.front(), "bad");
-  flag->bad = false;
-  s.receive(text("x"), 102.2, 0);
-  EXPECT_EQ(s.report(102.3, 12.0, 0.8, false).status, TopicHealth::ABNORMAL);
-  s.receive(text("x"), 102.4, 0);
-  EXPECT_EQ(s.report(102.5, 15.0, 0.8, false).status, TopicHealth::OK);
-  EXPECT_TRUE(
-    std::isnan(
-      Stream(
-        StreamSpec{"/n", "", "", std::nullopt, false, false, false,
-          true}).report(0, 0, 0.8, false).age_s));
+  EXPECT_TRUE(h.issues.empty());
+  s.reset_counts();
+  s.error = "type unavailable: x";
+  h = s.report(102.0, 0.8);
+  EXPECT_EQ(h.status, TopicHealth::TYPE_UNAVAILABLE);
+  EXPECT_EQ(h.issues, std::vector<std::string>{"type unavailable: x"});
+  EXPECT_EQ(h.written, 0U);
+  EXPECT_TRUE(std::isnan(
+    Stream(StreamSpec{"/n", "", "", std::nullopt, false, false, false}).report(0, 0.8).age_s));
 }
 
-TEST(Stream, AutoMarkerOnValueChange)
+TEST(Stream, FramesAndLatched)
 {
-  Stream s(StreamSpec{"/mode", "std_msgs/msg/String", "", std::nullopt, false, false, false, true});
-  s.set_auto_marker({"/mode", "drive mode", "data", "mode"});
-  EXPECT_EQ(s.auto_kind, "mode");
-  EXPECT_FALSE(s.receive(text("MANUAL"), 1, 0));
-  EXPECT_FALSE(s.receive(text("MANUAL"), 2, 0));
-  EXPECT_EQ(*s.receive(text("AUTO"), 3, 0), "drive mode: MANUAL -> AUTO");
-
-  Stream bad(StreamSpec{"/mode", "std_msgs/msg/String", "", std::nullopt, false, false, false,
-      true});
-  bad.set_auto_marker({"/mode", "", "nope", "auto"});
-  EXPECT_FALSE(bad.receive(text("A"), 1, 0));
-  EXPECT_FALSE(bad.receive(text("B"), 2, 0));
-  EXPECT_EQ(bad.report(2, 2, 0.8, false).values.back().rfind("auto marker off", 0), 0U);
-}
-
-TEST(SessionInfo, GlobAndIds)
-{
-  using rosbag_recorder::glob_match;
-  EXPECT_TRUE(glob_match("src/**/config/*.yaml", "src/a/b/config/x.yaml"));
-  EXPECT_TRUE(glob_match("src/**/config/*.yaml", "src/config/x.yaml"));
-  EXPECT_FALSE(glob_match("src/**/config/*.yaml", "src/a/config/sub/x.yaml"));
-  EXPECT_TRUE(glob_match("src/bring_up/launch/*.py", "src/bring_up/launch/a.py"));
-  EXPECT_FALSE(glob_match("src/*.py", "src/a/b.py"));
-  EXPECT_TRUE(glob_match("params/scv?.yaml", "params/scv1.yaml"));
-  const std::time_t t = 0;
-  const std::string id = rosbag_recorder::session_id("drive", " test run!", t);
-  EXPECT_EQ(id.substr(15), "_drive_test_run");
-  EXPECT_EQ(rosbag_recorder::session_id("drive", "", t).substr(15), "_drive");
-  EXPECT_EQ(
-    rosbag_recorder::sha256("abc"),
-    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-  EXPECT_EQ(rosbag_recorder::expand_user("/x"), "/x");
+  Stream s(
+    StreamSpec{"/tf_static", "tf2_msgs/msg/TFMessage", "", std::nullopt, false, true, false});
+  s.receive(tf_message("map", "odom"), 1.0);
+  EXPECT_TRUE(s.frames().empty());
+  s.collect_frames();
+  s.receive(tf_message("odom", "base_link"), 2.0);
+  EXPECT_EQ(s.frames(), (std::set<std::string>{"odom", "base_link"}));
+  for (int i = 0; i < 101; ++i) {
+    s.keep_latched(std::make_shared<rclcpp::SerializedMessage>(tf_message("a", std::to_string(i))));
+  }
+  EXPECT_EQ(s.latched().size(), 100U);
 }

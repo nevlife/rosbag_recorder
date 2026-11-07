@@ -1,10 +1,11 @@
+#include "rclcpp/rclcpp.hpp"
+
+#include "sensor_msgs/msg/imu.hpp"
+
 #include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include "rclcpp/rclcpp.hpp"
-#include "sensor_msgs/msg/imu.hpp"
 
 // Publishes stamped IMU messages on <prefix><i> for i < count, all at `rate` Hz.
 int main(int argc, char ** argv)
@@ -23,13 +24,12 @@ int main(int argc, char ** argv)
   imu.header.frame_id = "imu";
   imu.linear_acceleration.z = 9.8;
   imu.orientation.w = 1.0;
-  auto timer = node->create_wall_timer(
-    std::chrono::duration<double>(1.0 / rate), [&]() {
-      imu.header.stamp = node->now();
-      for (auto & p : publishers) {
-        p->publish(imu);
-      }
-    });
+  auto timer = node->create_wall_timer(std::chrono::duration<double>(1.0 / rate), [&]() {
+    imu.header.stamp = node->now();
+    for (auto & p : publishers) {
+      p->publish(imu);
+    }
+  });
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;

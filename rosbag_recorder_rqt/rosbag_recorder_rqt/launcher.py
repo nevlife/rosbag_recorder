@@ -8,7 +8,6 @@ import subprocess
 import tempfile
 import time
 
-from ament_index_python.packages import get_package_prefix, get_package_share_directory
 import rclpy
 from rosbag_recorder_msgs.srv import Status
 
@@ -36,23 +35,25 @@ def ensure_recorder(args):
                 if client.wait_for_service(timeout_sec=15.0):
                     return
                 raise RuntimeError(f'recorder PID {previous} is not responding; see {log_path}')
-            config_dir = args.config_dir or str(
-                Path(get_package_share_directory('rosbag_recorder')) / 'config')
-            executable = (Path(get_package_prefix('rosbag_recorder')) / 'lib' /
-                          'rosbag_recorder' / 'rosbag_recorder_node')
-            command = [str(executable), '--ros-args']
-            params = {'config_dir': str(Path(config_dir).expanduser().resolve()),
-                      'output_dir': args.output_dir,
-                      'autostart': str(args.autostart).lower()}
-            if args.profile:
-                params['profile'] = args.profile
-            for name, value in params.items():
-                command.extend(['-p', f'{name}:={value}'])
+            command = ['ros2', 'launch', 'rosbag_recorder', 'recorder.launch.py']
+            arguments = {
+                'output_dir': args.output_dir,
+                'autostart': str(args.autostart).lower(),
+                'profile': args.profile,
+                'config_dir': args.config_dir
+                and str(Path(args.config_dir).expanduser().resolve()),
+            }
+            # ros2 launch rejects an empty value; an omitted argument keeps the parameter file's.
+            command.extend(f'{name}:={value}' for name, value in arguments.items() if value)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             with log_path.open('ab') as log:
                 process = subprocess.Popen(
-                    command, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                    start_new_session=True)
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
             lock.seek(0)
             lock.truncate()
             lock.write(str(process.pid))
@@ -73,8 +74,9 @@ def ensure_recorder(args):
 def main(argv=None):
     """Run the GUI without tying recording to the lifetime of the window."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config-dir', default='',
-                        help='configuration folder (default: bundled SCV profiles)')
+    parser.add_argument(
+        '--config-dir', default='', help='configuration folder (default: installed config)'
+    )
     parser.add_argument('--output-dir', default='~/rosbag_recorder')
     parser.add_argument('--profile', default='')
     parser.add_argument('--autostart', action='store_true')
@@ -87,5 +89,7 @@ def main(argv=None):
     if args.no_gui:
         return 0
     from rqt_gui.main import Main
-    return Main().main(['rosbag_recorder'],
-                       standalone='rosbag_recorder_rqt.recorder.RecorderPlugin')
+
+    return Main().main(
+        ['rosbag_recorder'], standalone='rosbag_recorder_rqt.recorder.RecorderPlugin'
+    )

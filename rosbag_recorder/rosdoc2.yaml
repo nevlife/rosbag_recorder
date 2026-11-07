@@ -1,23 +1,17 @@
 ## rosdoc2 configuration; see https://github.com/ros-infrastructure/rosdoc2.
-## The headers keep comments to constraints the code does not show, so undocumented
-## members are not reported.
-type: 'rosdoc2 config'
+## The package installs no headers, so there is no C++ API to document.
+type: rosdoc2 config
 version: 1
 
----
 
+# rosdoc2 reads two YAML documents from this file.
+# yamllint disable-line rule:document-start
+---
 settings:
-    generate_package_index: true
-    always_run_doxygen: false
-    always_run_sphinx_apidoc: false
+  generate_package_index: true
+  always_run_doxygen: false
+  always_run_sphinx_apidoc: false
 builders:
-    - doxygen: {
-        name: 'rosbag_recorder Public C/C++ API',
-        output_dir: 'generated/doxygen',
-        extra_doxyfile_statements: ['WARN_IF_UNDOCUMENTED = NO']
-    }
-    - sphinx: {
-        name: 'rosbag_recorder',
-        doxygen_xml_directory: 'generated/doxygen/xml',
-        output_dir: ''
-    }
+  - sphinx:
+      name: rosbag_recorder
+      output_dir: ""

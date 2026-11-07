@@ -1,5 +1,4 @@
 version: 1
-heavy_threshold_kb: 500.0
 groups:
   lidar:
     description: LiDAR; Velodyne is recorded as raw packets and converted to point clouds on playback
@@ -8,16 +7,13 @@ groups:
         type: velodyne_msgs/msg/VelodyneScan
         hz: 10.0
         required: true
-        size_kb: 220.0
-        description: VLP-32C raw packets (size is an estimate)
+        description: VLP-32C raw packets
       /front/scan:
         type: sensor_msgs/msg/LaserScan
         hz: 10.0
-        size_kb: 6.0
       /rear/scan:
         type: sensor_msgs/msg/LaserScan
         hz: 10.0
-        size_kb: 6.0
   lidar_points:
     description: converted point cloud (large; packets can replace it)
     topics:
@@ -25,70 +21,51 @@ groups:
         type: sensor_msgs/msg/PointCloud2
         hz: 10.0
         heavy: true
-        size_kb: 1246.0
   camera_info:
     description: camera intrinsics; record with the images (raw or compressed)
     topics:
       /camera/camera/color/camera_info:
         hz: 30.0
-        size_kb: 0.4
       /camera/camera/depth/camera_info:
         hz: 30.0
-        size_kb: 0.4
       /camera/camera/aligned_depth_to_color/camera_info:
         hz: 30.0
-        size_kb: 0.4
       /d435_left/d435_left/color/camera_info:
         hz: 15.0
-        size_kb: 0.4
       /d435_center/d435_center/color/camera_info:
         hz: 15.0
-        size_kb: 0.4
       /d435_right/d435_right/color/camera_info:
         hz: 15.0
-        size_kb: 0.4
       /d435_left/d435_left/depth/camera_info:
         hz: 15.0
-        size_kb: 0.4
       /d435_center/d435_center/depth/camera_info:
         hz: 15.0
-        size_kb: 0.4
       /d435_right/d435_right/depth/camera_info:
         hz: 15.0
-        size_kb: 0.4
   camera_compressed:
     description: compressed images (image_transport); sizes are estimates, update them with a catalog scan
     topics:
       /camera/camera/color/image_raw/compressed:
         hz: 30.0
-        size_kb: 100.0
       /camera/camera/depth/image_rect_raw/compressedDepth:
         hz: 30.0
-        size_kb: 250.0
       /camera/camera/aligned_depth_to_color/image_raw/compressedDepth:
         hz: 30.0
-        size_kb: 280.0
         description: D555 aligned depth compressed (PNG); size is an estimate
       /d435_left/d435_left/color/image_raw/compressed:
         hz: 15.0
-        size_kb: 150.0
       /d435_center/d435_center/color/image_raw/compressed:
         hz: 15.0
-        size_kb: 150.0
       /d435_right/d435_right/color/image_raw/compressed:
         hz: 15.0
-        size_kb: 150.0
       /d435_left/d435_left/depth/image_rect_raw/compressedDepth:
         hz: 15.0
-        size_kb: 250.0
         description: D435 depth compressed (PNG); size is an estimate
       /d435_center/d435_center/depth/image_rect_raw/compressedDepth:
         hz: 15.0
-        size_kb: 250.0
         description: D435 depth compressed (PNG); size is an estimate
       /d435_right/d435_right/depth/image_rect_raw/compressedDepth:
         hz: 15.0
-        size_kb: 250.0
         description: D435 depth compressed (PNG); size is an estimate
   camera_raw:
     description: raw images (very large; best-effort when recording, rate measured on camera_info)
@@ -97,57 +74,39 @@ groups:
         type: sensor_msgs/msg/Image
         hz: 30.0
         heavy: true
-        size_kb: 1323.0
-        monitor_via: /camera/camera/color/camera_info
       /camera/camera/depth/image_rect_raw:
         type: sensor_msgs/msg/Image
         hz: 30.0
         heavy: true
-        size_kb: 795.0
-        monitor_via: /camera/camera/depth/camera_info
       /camera/camera/aligned_depth_to_color/image_raw:
         type: sensor_msgs/msg/Image
         hz: 30.0
         heavy: true
-        size_kb: 882.0
-        monitor_via: /camera/camera/aligned_depth_to_color/camera_info
         description: D555 depth aligned to color resolution (16UC1, align_depth.enable); size is an estimate
       /d435_left/d435_left/color/image_raw:
         type: sensor_msgs/msg/Image
         hz: 15.0
         heavy: true
-        size_kb: 2700.0
-        monitor_via: /d435_left/d435_left/color/camera_info
       /d435_center/d435_center/color/image_raw:
         type: sensor_msgs/msg/Image
         hz: 15.0
         heavy: true
-        size_kb: 2700.0
-        monitor_via: /d435_center/d435_center/color/camera_info
       /d435_right/d435_right/color/image_raw:
         type: sensor_msgs/msg/Image
         hz: 15.0
         heavy: true
-        size_kb: 2700.0
-        monitor_via: /d435_right/d435_right/color/camera_info
       /d435_left/d435_left/depth/image_rect_raw:
         type: sensor_msgs/msg/Image
         hz: 15.0
         heavy: true
-        size_kb: 795.0
-        monitor_via: /d435_left/d435_left/depth/camera_info
       /d435_center/d435_center/depth/image_rect_raw:
         type: sensor_msgs/msg/Image
         hz: 15.0
         heavy: true
-        size_kb: 795.0
-        monitor_via: /d435_center/d435_center/depth/camera_info
       /d435_right/d435_right/depth/image_rect_raw:
         type: sensor_msgs/msg/Image
         hz: 15.0
         heavy: true
-        size_kb: 795.0
-        monitor_via: /d435_right/d435_right/depth/camera_info
   imu_gnss:
     description: IMU and GNSS; GNSS rate unknown (fill in with a catalog scan outdoors)
     topics:
@@ -155,19 +114,13 @@ groups:
         type: sensor_msgs/msg/Imu
         hz: 20.0
         required: true
-        size_kb: 0.4
       /vectornav/pose:
         hz: 20.0
-        size_kb: 0.4
       /ublox_gps_node/fix:
         type: sensor_msgs/msg/NavSatFix
-        size_kb: 0.2
       /ublox_gps_node/fix_velocity:
-        size_kb: 0.4
       /navpvt:
-        size_kb: 0.2
       /rxmrtcm:
-        size_kb: 0.1
   vehicle:
     description: chassis state, wheel speed, steering
     topics:
@@ -175,17 +128,12 @@ groups:
         type: hunter_msgs/msg/HunterStatus
         hz: 50.0
         required: true
-        size_kb: 0.2
       /hunter/velocity:
         type: std_msgs/msg/Float64
         hz: 50.0
-        size_kb: 0.1
       /current_speed:
-        size_kb: 0.1
       /current_steer_angle:
-        size_kb: 0.1
       /odom:
-        size_kb: 0.7
   localization:
     description: localization output (field_drive stack)
     topics:
@@ -193,55 +141,39 @@ groups:
         type: nav_msgs/msg/Odometry
         hz: 30.0
         required: true
-        size_kb: 0.7
         description: reference rate from the dual EKF frequency 30 Hz (approximate)
       /odometry/fast_lio:
-        size_kb: 0.7
       /gps/fix_gated:
         type: sensor_msgs/msg/NavSatFix
-        size_kb: 0.2
       /map_anchor/mode:
         type: std_msgs/msg/String
-        size_kb: 0.1
       /map_anchor/yaw_corr:
-        size_kb: 0.1
   planning:
     description: path, behavior, costmap
     topics:
       /behavior_status:
-        size_kb: 0.2
       /planned_path_detailed:
-        size_kb: 20.0
       /multiple_waypoints:
-        size_kb: 5.0
       /costmap:
         type: nav_msgs/msg/OccupancyGrid
         hz: 10.0
-        size_kb: 40.0
       /costmap_keepout:
-        size_kb: 40.0
   control:
     description: control commands, drive mode, emergency stop
     topics:
       /cmd_vel:
         type: geometry_msgs/msg/Twist
         hz: 10.0
-        size_kb: 0.1
       /final_cmd:
         type: geometry_msgs/msg/Twist
-        size_kb: 0.1
       /vehicle/mux_status:
-        size_kb: 0.1
       /vehicle/estop_status:
-        size_kb: 0.1
       /remote/cmd_mode:
-        size_kb: 0.1
   tf:
     description: transforms and robot model
     topics:
       /tf:
         type: tf2_msgs/msg/TFMessage
-        size_kb: 1.0
       /tf_static:
         type: tf2_msgs/msg/TFMessage
         latched: true

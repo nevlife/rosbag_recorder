@@ -1,5 +1,0 @@
-<library path="rosbag_recorder_counter_source">
-  <class name="rosbag_recorder_test/CounterSource" type="rosbag_recorder_test::CounterSource" base_class_type="rosbag_recorder_source::Source">
-    <description>Test source: a counter and a stamped IMU channel written from a thread.</description>
-  </class>
-</library>

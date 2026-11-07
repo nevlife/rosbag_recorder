@@ -10,7 +10,6 @@ find_package(ament_cmake REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(flux_cpp REQUIRED)
 find_package(flux_msgs REQUIRED)
-find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rmw REQUIRED)
@@ -18,21 +17,25 @@ find_package(rosbag2_compression REQUIRED)
 find_package(rosbag2_cpp REQUIRED)
 find_package(rosbag2_storage REQUIRED)
 find_package(rosbag2_transport REQUIRED)
-find_package(rosbag_recorder_checks REQUIRED)
 find_package(rosbag_recorder_msgs REQUIRED)
-find_package(rosbag_recorder_source REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
-add_library(${PROJECT_NAME}_core SHARED src/config.cpp src/session_info.cpp src/stream.cpp)
-target_include_directories(${PROJECT_NAME}_core PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+add_library(${PROJECT_NAME}_core SHARED
+  src/catalog_diff.cpp
+  src/config.cpp
+  src/disk_watch.cpp
+  src/preflight.cpp
+  src/selection.cpp
+  src/session_info.cpp
+  src/start_gate.cpp
+  src/stream.cpp
+  src/summary.cpp
+  src/text.cpp)
 target_link_libraries(${PROJECT_NAME}_core PUBLIC
   rclcpp::rclcpp
-  rosbag_recorder_checks::rosbag_recorder_checks
   ${rosbag_recorder_msgs_TARGETS}
   ${tf2_msgs_TARGETS}
   yaml-cpp
@@ -45,13 +48,11 @@ target_link_libraries(${PROJECT_NAME}_component PUBLIC
   ${PROJECT_NAME}_core
   flux_cpp::flux_cpp
   ${flux_msgs_TARGETS}
-  pluginlib::pluginlib
   rclcpp_components::component
   rmw::rmw
   rosbag2_compression::rosbag2_compression
   rosbag2_cpp::rosbag2_cpp
   rosbag2_storage::rosbag2_storage
-  rosbag_recorder_source::rosbag_recorder_source
   ${std_srvs_TARGETS})
 if(rosbag2_cpp_VERSION VERSION_LESS 0.22)
   target_link_libraries(${PROJECT_NAME}_component PUBLIC rosbag2_transport::rosbag2_transport)
@@ -59,9 +60,11 @@ endif()
 rclcpp_components_register_node(${PROJECT_NAME}_component
   PLUGIN "rosbag_recorder::RecorderNode"
   EXECUTABLE ${PROJECT_NAME}_node
-  EXECUTOR MultiThreadedExecutor)
+  EXECUTOR flux::Executor)
+# The generated main includes only rclcpp, and an rclcpp executor delivers no Flux frame.
+target_compile_options(${PROJECT_NAME}_node PRIVATE -include flux/executor.hpp)
+target_link_libraries(${PROJECT_NAME}_node flux_cpp::flux_cpp)
 
-install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_component
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -74,22 +77,20 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(launch_testing_ament_cmake REQUIRED)
   find_package(sensor_msgs REQUIRED)
-  find_package(std_msgs REQUIRED)
 
-  ament_add_gtest(test_core test/test_config.cpp test/test_stream.cpp)
+  ament_add_gtest(test_core
+    test/test_catalog_diff.cpp
+    test/test_config.cpp
+    test/test_disk_watch.cpp
+    test/test_preflight.cpp
+    test/test_selection.cpp
+    test/test_session_info.cpp
+    test/test_start_gate.cpp
+    test/test_stream.cpp
+    test/test_summary.cpp)
   target_compile_definitions(test_core PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data")
-  target_link_libraries(test_core ${PROJECT_NAME}_core ${std_msgs_TARGETS})
-
-  add_library(rosbag_recorder_counter_source SHARED test/counter_source.cpp)
-  target_link_libraries(rosbag_recorder_counter_source
-    pluginlib::pluginlib
-    rclcpp::rclcpp
-    rosbag_recorder_source::rosbag_recorder_source
-    ${sensor_msgs_TARGETS}
-    ${std_msgs_TARGETS}
-    yaml-cpp)
-  install(TARGETS rosbag_recorder_counter_source LIBRARY DESTINATION lib)
-  pluginlib_export_plugin_description_file(rosbag_recorder_source test/counter_source.xml)
+  target_include_directories(test_core PRIVATE src)
+  target_link_libraries(test_core ${PROJECT_NAME}_core)
 
   add_executable(many_publishers test/many_publishers.cpp)
   target_link_libraries(many_publishers rclcpp::rclcpp ${sensor_msgs_TARGETS})
@@ -109,5 +110,4 @@ if(BUILD_TESTING)
     ENV ROS_DOMAIN_ID=95 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
 endif()
 
-ament_export_dependencies(rclcpp rosbag_recorder_checks rosbag_recorder_msgs tf2_msgs yaml-cpp)
 ament_package()

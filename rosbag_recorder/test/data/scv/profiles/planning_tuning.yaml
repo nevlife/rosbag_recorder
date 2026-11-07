@@ -4,10 +4,10 @@ name: planning_tuning
 description: parameter tuning loops with pose, path, behavior, control, vehicle state, costmap only (no raw sensors, very small)
 extends: base
 groups:
-- vehicle
-- localization
-- planning
-- control
-- tf
+  - vehicle
+  - localization
+  - planning
+  - control
+  - tf
 options:
   split_duration_sec: 600

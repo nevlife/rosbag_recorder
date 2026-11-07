@@ -13,6 +13,10 @@ source install/setup.bash
 rosbag_recorder
 ```
 
+`rosbag_recorder` reuses a running recorder or starts one with
+`ros2 launch rosbag_recorder recorder.launch.py`, which runs the node in a `flux_components`
+component container. An rclcpp executor or container delivers no Flux frame.
+
 Check individual topics or an entire category. Topics that have no configured category appear
 under `Uncategorized`. Click Preview selection to monitor the selected inputs, or Start to apply
 the selection and record. Stop ends the session. Pause, Resume and Split control an open session.
@@ -45,4 +49,4 @@ Use `rosbag_recorder --config-dir /path/to/config` to supply another catalog. Th
 recorder when the window is closed and reopened.
 
 See [configuration](docs/configuration.md), [usage](docs/usage.md), and [testing](docs/testing.md).
-The older profile and source-plugin service APIs remain available for scripted integrations.
+The older profile service APIs remain available for scripted integrations.

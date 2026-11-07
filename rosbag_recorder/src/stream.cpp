@@ -1,23 +1,21 @@
-#include "rosbag_recorder/stream.hpp"
+#include "stream.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <iterator>
 #include <limits>
 #include <memory>
-#include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 
 namespace rosbag_recorder
 {
 namespace
 {
 
-constexpr std::size_t kSizes = 50;
-constexpr double kIssueHold = 3.0;
-constexpr std::size_t kLatched = 100;
+constexpr std::size_t size_window = 50;
+constexpr std::size_t latched_kept = 100;
 
 double window_for(std::optional<double> expected)
 {
@@ -33,9 +31,8 @@ Rate evaluate_rate(
   Rate r;
   if (!arrivals.empty()) {
     r.age = now - arrivals.back();
-    const auto first = std::lower_bound(
-      arrivals.begin(), arrivals.end(),
-      now - window_for(expected));
+    const auto first =
+      std::lower_bound(arrivals.begin(), arrivals.end(), now - window_for(expected));
     const auto n = std::distance(first, arrivals.end());
     if (n >= 2 && arrivals.back() > *first) {
       r.hz = static_cast<double>(n - 1) / (arrivals.back() - *first);
@@ -57,47 +54,22 @@ Rate evaluate_rate(
   return r;
 }
 
-Stream::Stream(StreamSpec s)
-: spec(std::move(s)) {}
-
-void Stream::set_checks(std::vector<std::shared_ptr<rosbag_recorder_checks::Check>> checks)
+Stream::Stream(StreamSpec s) : spec(std::move(s))
 {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  checks_ = std::move(checks);
 }
 
-void Stream::set_auto_marker(const AutoMarker & marker)
+void Stream::receive(const rclcpp::SerializedMessage & message, double mono)
 {
-  auto info = std::make_unique<rosbag_recorder_checks::TypeInfo>(spec.type);
-  const std::lock_guard<std::mutex> lock(mutex_);
-  auto_kind = marker.kind;
-  auto_marker_ = marker;
-  type_info_ = std::move(info);
-}
-
-void Stream::collect_frames()
-{
-  const std::lock_guard<std::mutex> lock(mutex_);
-  frames_on_ = true;
-}
-
-std::optional<std::string> Stream::receive(
-  const rclcpp::SerializedMessage & message, double mono, double wall)
-{
-  const std::lock_guard<std::mutex> lock(mutex_);
   arrivals_.push_back(mono);
   const double keep = window_for(spec.hz) + 1.0;
   while (arrivals_.front() < mono - keep) {
     arrivals_.pop_front();
   }
   sizes_.push_back(message.size());
-  if (sizes_.size() > kSizes) {
+  if (sizes_.size() > size_window) {
     sizes_.pop_front();
   }
   ++received_;
-  for (const auto & check : checks_) {
-    check->on_message(message, wall);
-  }
   if (frames_on_) {
     tf2_msgs::msg::TFMessage tf;
     tf_serialization_.deserialize_message(&message, &tf);
@@ -106,29 +78,10 @@ std::optional<std::string> Stream::receive(
       frames_.insert(t.child_frame_id);
     }
   }
-  if (!type_info_) {
-    return std::nullopt;
-  }
-  std::string value;
-  try {
-    value = type_info_->text(message, auto_marker_->field);
-  } catch (const std::invalid_argument & e) {
-    type_info_.reset();
-    auto_marker_error_ = std::string("auto marker off: ") + e.what();
-    return std::nullopt;
-  }
-  std::optional<std::string> change;
-  if (last_value_ && *last_value_ != value) {
-    const std::string label = auto_marker_->label.empty() ? spec.name : auto_marker_->label;
-    change = label + ": " + *last_value_ + " -> " + value;
-  }
-  last_value_ = value;
-  return change;
 }
 
-TopicHealth Stream::report(double mono, double wall, double tolerance, bool sim_time)
+TopicHealth Stream::report(double mono, double tolerance) const
 {
-  const std::lock_guard<std::mutex> lock(mutex_);
   const Rate rate = evaluate_rate(
     spec.hz, arrivals_, received_, mono, tolerance, publishers, spec.latched, !error.empty());
   TopicHealth h;
@@ -149,72 +102,18 @@ TopicHealth Stream::report(double mono, double wall, double tolerance, bool sim_
   h.received = received_;
   h.written = written_;
   h.publishers = publishers;
-  if (!checks_.empty()) {
-    rosbag_recorder_checks::Result r;
-    bool got = false;
-    const rosbag_recorder_checks::Context context{wall, sim_time, publishers};
-    for (const auto & check : checks_) {
-      got = check->evaluate(context, r) || got;
-    }
-    if (got) {
-      result_ = std::move(r);
-      last_result_ = wall;
-    } else if (wall - last_result_ > kIssueHold) {
-      result_ = {};
-    }
-    if (!result_.issues.empty()) {
-      held_issues = result_.issues;
-      held_until_ = wall + kIssueHold;
-    } else if (wall > held_until_) {
-      held_issues.clear();
-    }
-    h.values = result_.values;
-    if (h.status == TopicHealth::OK) {
-      h.issues = held_issues;
-      if (!held_issues.empty()) {
-        h.status = TopicHealth::ABNORMAL;
-      }
-    }
-  }
   if (!error.empty()) {
     h.issues.push_back(error);
-  }
-  if (!auto_marker_error_.empty()) {
-    h.values.push_back(auto_marker_error_);
   }
   return h;
 }
 
 void Stream::keep_latched(std::shared_ptr<rclcpp::SerializedMessage> message)
 {
-  const std::lock_guard<std::mutex> lock(mutex_);
   latched_.push_back(std::move(message));
-  if (latched_.size() > kLatched) {
+  if (latched_.size() > latched_kept) {
     latched_.pop_front();
   }
-}
-
-std::vector<std::shared_ptr<rclcpp::SerializedMessage>> Stream::latched() const
-{
-  const std::lock_guard<std::mutex> lock(mutex_);
-  return {latched_.begin(), latched_.end()};
-}
-
-std::set<std::string> Stream::frames() const
-{
-  const std::lock_guard<std::mutex> lock(mutex_);
-  return frames_;
-}
-
-std::uint64_t Stream::received() const
-{
-  const std::lock_guard<std::mutex> lock(mutex_);
-  return received_;
-}
-
-void Stream::reset_counts()
-{
-  written_ = 0;
 }
 
 }  // namespace rosbag_recorder

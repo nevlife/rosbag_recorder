@@ -17,13 +17,10 @@ SCV configuration folder can be passed as `config_dir` without changes.
 ## Differences
 
 - The desktop window uses explicit ROS/Flux topic selection instead of the scripted profile list.
-- `auto_markers` and `value_checks` are parsed for compatibility but are not attached by the recorder.
-
-- `monitor_via` is accepted and not used, because every recorded topic is measured on its own
-  subscription.
-- Added keys, all optional: catalog `sources`; profile `sources`, `exclude_sources`; options
-  `storage_preset`, `storage_config_uri`, `on_not_ready`, `required_frames`. A folder that uses
-  them is no longer valid for SCV.
+- `heavy_threshold_kb`, `auto_markers`, `value_checks`, `size_kb` and `monitor_via` are accepted
+  and ignored. Every recorded topic is measured on its own subscription.
+- Added keys, all optional: options `storage_preset`, `storage_config_uri`, `on_not_ready`,
+  `required_frames`. A folder that uses them is no longer valid for SCV.
 
 ## How it is checked
 

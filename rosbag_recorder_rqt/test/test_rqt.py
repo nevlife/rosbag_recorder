@@ -7,7 +7,10 @@ from ament_xmllint.main import main as xmllint_main
 import pytest
 from python_qt_binding.QtCore import Qt
 import rclpy
-from rosbag_recorder_msgs.msg import AvailableTopic, CheckResult, Health, TopicHealth
+from rosbag_recorder_msgs.msg import AvailableTopic
+from rosbag_recorder_msgs.msg import CheckResult
+from rosbag_recorder_msgs.msg import Health
+from rosbag_recorder_msgs.msg import TopicHealth
 from rosbag_recorder_msgs.srv import SetTopics
 from rosbag_recorder_rqt import rows
 
@@ -15,14 +18,21 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 
 def topic(name, transport='ros', group='', **fields):
-    return AvailableTopic(name=name, transport=transport, group=group,
-                          type='custom_msgs/msg/Sample', publishers=1, **fields)
+    return AvailableTopic(
+        name=name,
+        transport=transport,
+        group=group,
+        type='custom_msgs/msg/Sample',
+        publishers=1,
+        **fields,
+    )
 
 
 @pytest.fixture
 def widget():
     from python_qt_binding.QtWidgets import QApplication
     from rosbag_recorder_rqt.recorder import RecorderWidget
+
     app = QApplication.instance() or QApplication([])
     rclpy.init()
     node = rclpy.create_node('rosbag_recorder_rqt_test')
@@ -35,13 +45,18 @@ def widget():
 
 
 def test_category_selects_ros_and_flux_by_name(widget):
-    topics = [topic('/lidar/a', group='lidar'), topic('/lidar/b', 'flux', 'lidar'),
-              topic('/custom/data', 'flux')]
+    topics = [
+        topic('/lidar/a', group='lidar'),
+        topic('/lidar/b', 'flux', 'lidar'),
+        topic('/custom/data', 'flux'),
+    ]
     widget.on_topics(topics)
     group = widget.tree.topLevelItem(0)
     group.setCheckState(0, Qt.Checked)
     assert {(t.transport, t.name) for t in widget.selected_topics()} == {
-        ('ros', '/lidar/a'), ('flux', '/lidar/b')}
+        ('ros', '/lidar/a'),
+        ('flux', '/lidar/b'),
+    }
     widget.items[('ros', '/lidar/a')].setCheckState(0, Qt.Unchecked)
     assert group.checkState(0) == Qt.PartiallyChecked
     assert widget.tree.topLevelItem(1).text(0) == 'Uncategorized'
@@ -56,10 +71,22 @@ def test_refresh_preserves_selection_and_updates_statistics(widget):
     item.setCheckState(0, Qt.Checked)
     widget.on_topics(topics)
     assert item.checkState(0) == Qt.Checked
-    health = Health(state=Health.PREVIEW, output_dir='/bags', disk_free_gb=50.0,
-                    remaining_min=math.nan, topics=[TopicHealth(
-                        name='/a/flux', source='flux', status=TopicHealth.OK,
-                        hz=12.0, age_s=0.1, written=10)])
+    health = Health(
+        state=Health.PREVIEW,
+        output_dir='/bags',
+        disk_free_gb=50.0,
+        remaining_min=math.nan,
+        topics=[
+            TopicHealth(
+                name='/a/flux',
+                source='flux',
+                status=TopicHealth.OK,
+                hz=12.0,
+                age_s=0.1,
+                written=10,
+            )
+        ],
+    )
     widget.on_health(health)
     assert item.text(4) == '12.0' and item.text(6) == '10'
     assert widget.items[('ros', '/a')].text(6) == '-'

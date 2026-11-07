@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    # Folder with catalog.yaml and profiles/. The launch file passes the installed config.
+    config_dir: ""
+    output_dir: ~/rosbag_recorder
+    # Profile selected at start; empty selects none.
+    profile: ""
+    autostart: false
+    label: ""
+    # Workspace whose git state and parameter files are recorded; empty records neither.
+    workspace: ""
+    # param_globs (workspace files copied into the session) is empty unless set here, as a
+    # ROS parameter file cannot hold an empty list.
+    param_copy_max_kb: 5120
+    hz_tolerance: 0.8

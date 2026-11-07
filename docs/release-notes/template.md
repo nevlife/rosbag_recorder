@@ -11,23 +11,23 @@
 
 ### Features
 
-* Example text (rosbag_recorder)
+- Example text (rosbag_recorder)
 
 ### Bugfixes
 
-* Example text (rosbag_recorder)
+- Example text (rosbag_recorder)
 
 ### Refactoring
 
-* Example text (rosbag_recorder)
+- Example text (rosbag_recorder)
 
 ### Workflow
 
-* Example text (tests, build, documentation)
+- Example text (tests, build, documentation)
 
 ### New API features
 
-* Example text (rosbag_recorder_msgs)
+- Example text (rosbag_recorder_msgs)
 
 ### API Breaking Changes
 

@@ -4,8 +4,8 @@ name: long_transit
 description: long stretches such as indoor↔outdoor moves; drive_standard without cameras, zstd compression
 extends: drive_standard
 exclude_groups:
-- camera_compressed
-- camera_info
+  - camera_compressed
+  - camera_info
 options:
   compression: zstd
   split_duration_sec: 600

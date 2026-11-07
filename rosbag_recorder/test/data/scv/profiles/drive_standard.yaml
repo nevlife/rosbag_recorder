@@ -4,12 +4,12 @@ name: drive_standard
 description: regular autonomous driving test with LiDAR packets, compressed cameras, sensors, pose, planning, control, vehicle state, TF
 extends: base
 groups:
-- lidar
-- camera_info
-- camera_compressed
-- imu_gnss
-- vehicle
-- localization
-- planning
-- control
-- tf
+  - lidar
+  - camera_info
+  - camera_compressed
+  - imu_gnss
+  - vehicle
+  - localization
+  - planning
+  - control
+  - tf

@@ -11,7 +11,10 @@ import rclpy
 from rclpy.client import Client
 from rclpy.executors import SingleThreadedExecutor
 from rosbag_recorder_msgs.msg import Health
-from rosbag_recorder_msgs.srv import Select, Start, Status, Stop
+from rosbag_recorder_msgs.srv import Select
+from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Status
+from rosbag_recorder_msgs.srv import Stop
 from rosbag_recorder_rqt import launcher
 from std_msgs.msg import String
 
@@ -21,15 +24,23 @@ def test_recording_survives_gui_exit(tmp_path, monkeypatch):
     monkeypatch.setenv('ROS_AUTOMATIC_DISCOVERY_RANGE', 'LOCALHOST')
     monkeypatch.setenv('QT_QPA_PLATFORM', 'offscreen')
     monkeypatch.setenv('XDG_STATE_HOME', str(tmp_path))
+    # A fresh rqt settings file, so a stale plugin cache in the user's config is not used.
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
     monkeypatch.setenv('XDG_RUNTIME_DIR', str(tmp_path))
     (tmp_path / 'profiles').mkdir()
     (tmp_path / 'catalog.yaml').write_text(
-        'groups:\n  data:\n    topics:\n      /launcher/data: {}\n')
+        'groups:\n  data:\n    topics:\n      /launcher/data: {}\n'
+    )
     (tmp_path / 'profiles' / 'test.yaml').write_text(
         'name: test\ngroups: [data]\noptions:\n  start_mode: immediate\n'
-        '  disk_warn_gb: 0\n  disk_stop_gb: 0\n')
-    args = argparse.Namespace(config_dir=str(tmp_path), output_dir=str(tmp_path / 'bags'),
-                              profile='test', autostart=False)
+        '  disk_warn_gb: 0\n  disk_stop_gb: 0\n'
+    )
+    args = argparse.Namespace(
+        config_dir=str(tmp_path),
+        output_dir=str(tmp_path / 'bags'),
+        profile='test',
+        autostart=False,
+    )
     spawned = []
     popen = subprocess.Popen
 
