@@ -57,13 +57,13 @@ TEST(Catalog, Errors)
   expect_error("heavy_threshold_kb: 500\n", "unknown keys [heavy_threshold_kb]");
   expect_error(
     "groups: {a: {topics: {/x: {monitor_via: /y}}}}\n", "unknown keys [monitor_via]");
+  expect_error("auto_markers: []\n", "unknown keys [auto_markers]");
+  expect_error("value_checks: {}\n", "unknown keys [value_checks]");
+  expect_error("groups: {a: {topics: {/x: {size_kb: 1}}}}\n", "unknown keys [size_kb]");
 }
 
-TEST(Catalog, IgnoredKeysAreAcceptedAndSorted)
+TEST(Catalog, SortTopics)
 {
-  EXPECT_NO_THROW(
-    catalog("auto_markers: [{label: x}]\nvalue_checks: {a: -1}\n"
-            "groups: {a: {topics: {/x: {size_kb: 1}}}}\n"));
   const Catalog c = catalog(small_catalog);
   EXPECT_EQ(
     c.sort_topics({"/zz", "/b1", "/a2", "/a1"}),

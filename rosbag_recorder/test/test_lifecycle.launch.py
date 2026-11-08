@@ -15,7 +15,6 @@ import rclpy
 from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from rosbag_recorder_msgs.msg import Health
-from rosbag_recorder_msgs.msg import Marker
 from rosbag_recorder_msgs.msg import TopicHealth
 from rosbag_recorder_msgs.srv import Select
 from rosbag_recorder_msgs.srv import Start
@@ -126,12 +125,9 @@ class TestLifecycle(unittest.TestCase):
             self.assertIn(text, response.message)
 
     def test_3_zero_imu_values_are_recorded_without_semantic_issues(self):
-        health, markers = [], []
+        health = []
         health_sub = self.node.create_subscription(
             Health, '/rosbag_recorder/health', health.append, 10
-        )
-        marker_sub = self.node.create_subscription(
-            Marker, '/rosbag_recorder/markers', markers.append, 10
         )
         publisher = self.node.create_publisher(Imu, '/lifecycle/imu', 10)
         self.assertTrue(self.call(Select, 'select', profile='imu').success)
@@ -141,12 +137,10 @@ class TestLifecycle(unittest.TestCase):
             self.until(lambda: health and health[-1].topics and health[-1].topics[0].written > 10)
             self.assertEqual(health[-1].topics[0].status, TopicHealth.OK)
             self.assertFalse(health[-1].topics[0].issues)
-            self.assertFalse(any(m.kind in ('value_issue', 'value_ok') for m in markers))
         finally:
             self.node.destroy_timer(timer)
             self.node.destroy_publisher(publisher)
             self.call(Stop, 'stop')
-            self.node.destroy_subscription(marker_sub)
             self.node.destroy_subscription(health_sub)
 
     def test_4_reconnect_after_qos_change(self):

@@ -41,7 +41,6 @@ for scripts. A profile can combine `groups`, `add_groups`, `exclude_groups`, ind
 and `exclude`, and inherit another profile with `extends`. Abstract profiles cannot record.
 The desktop window does not list or edit profiles.
 
-The catalog keys `auto_markers`, `value_checks` and `size_kb` are accepted and ignored.
 Each recorded input is monitored on its own subscription.
 
 ## Node parameters

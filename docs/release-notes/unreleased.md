@@ -29,7 +29,7 @@ Everything below is new since there is no release yet.
 - Publish on `~/output/{session,health,markers}`, remapped by the launch file to the unchanged `/rosbag_recorder/...` names (rosbag_recorder)
 - Read every parameter from `config/rosbag_recorder.param.yaml`; reject `hz_tolerance` outside 0.1 to 1.0 instead of clamping it (rosbag_recorder)
 - Move preflight, start modes, disk watch, summary, catalog diff and selection checks into ROS-free classes with unit tests; headers move to `src/` (rosbag_recorder)
-- Reject the unused catalog keys `heavy_threshold_kb` and `monitor_via` (rosbag_recorder)
+- Reject the unused catalog keys `heavy_threshold_kb`, `monitor_via`, `auto_markers`, `value_checks` and `size_kb` (rosbag_recorder)
 - Fail instead of recording empty values when git, `statvfs`, the directory size or the user name cannot be read (rosbag_recorder)
 
 - Query the graph only when it changes and cache the profile list (rosbag_recorder)

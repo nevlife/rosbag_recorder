@@ -1,11 +1,4 @@
 version: 1
-auto_markers:
-  - topic: /test/mode
-    label: drive mode
-    field: data
-    kind: mode
-value_checks:
-  stamp_delay_max_s: 0.5
 groups:
   small:
     topics:
@@ -14,7 +7,7 @@ groups:
       /test/mode: { type: std_msgs/msg/String }
   large:
     topics:
-      /test/points: { type: sensor_msgs/msg/PointCloud2, hz: 10.0, heavy: true, size_kb: 4096.0 }
+      /test/points: { type: sensor_msgs/msg/PointCloud2, hz: 10.0, heavy: true }
   tf:
     topics:
       /tf_static: { type: tf2_msgs/msg/TFMessage, latched: true }
