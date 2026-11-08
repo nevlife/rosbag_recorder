@@ -136,8 +136,7 @@ TopicSpec topic_spec(
   }
   require_map(data, where);
   check_keys(
-    data, {"type", "hz", "required", "heavy", "latched", "description", "size_kb", "monitor_via"},
-    where);
+    data, {"type", "hz", "required", "heavy", "latched", "description", "size_kb"}, where);
   if (data["type"] && !data["type"].IsNull()) {
     const std::string type = data["type"].as<std::string>();
     if (std::count(type.begin(), type.end(), '/') != 2) {
@@ -225,10 +224,8 @@ Catalog Catalog::load(const std::string & path)
 Catalog Catalog::parse(const YAML::Node & root, const std::string & where)
 {
   require_map(root, where);
-  // SCV writes heavy_threshold_kb, auto_markers, value_checks, size_kb and monitor_via; this
-  // recorder accepts them so an SCV folder loads unchanged, and does not use them.
-  check_keys(
-    root, {"version", "groups", "heavy_threshold_kb", "auto_markers", "value_checks"}, where);
+  // auto_markers, value_checks and size_kb are accepted and not used.
+  check_keys(root, {"version", "groups", "auto_markers", "value_checks"}, where);
   Catalog c;
   if (root["version"]) {
     c.version = root["version"].as<int>();

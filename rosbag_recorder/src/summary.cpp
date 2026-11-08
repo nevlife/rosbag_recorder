@@ -31,6 +31,18 @@ double seconds(const builtin_interfaces::msg::Time & t)
   return static_cast<double>(t.sec) + static_cast<double>(t.nanosec) * 1e-9;
 }
 
+std::uint64_t stored(const Summary & s, const std::string & topic)
+{
+  const auto it = s.stored.find(topic);
+  return it == s.stored.end() ? 0 : it->second;
+}
+
+std::uint64_t dropped(const Summary & s, const rosbag_recorder_msgs::msg::TopicHealth & t)
+{
+  const std::uint64_t in_bag = stored(s, t.name);
+  return t.written > in_bag ? t.written - in_bag : 0;
+}
+
 }  // namespace
 
 std::string summary_yaml(const Summary & s)
@@ -55,7 +67,8 @@ std::string summary_yaml(const Summary & s)
   for (const auto & t : s.topics) {
     out << YAML::Key << t.name << YAML::Value << YAML::Flow << YAML::BeginMap;
     out << YAML::Key << "type" << YAML::Value << t.type;
-    out << YAML::Key << "written" << YAML::Value << t.written;
+    out << YAML::Key << "written" << YAML::Value << stored(s, t.name);
+    out << YAML::Key << "dropped" << YAML::Value << dropped(s, t);
     out << YAML::Key << "last_status" << YAML::Value << status_names[t.status];
     out << YAML::EndMap;
   }
@@ -66,6 +79,15 @@ std::string summary_yaml(const Summary & s)
   }
   out << YAML::EndSeq << YAML::EndMap;
   return std::string(out.c_str()) + "\n";
+}
+
+std::uint64_t dropped(const Summary & s)
+{
+  std::uint64_t total = 0;
+  for (const auto & t : s.topics) {
+    total += dropped(s, t);
+  }
+  return total;
 }
 
 }  // namespace rosbag_recorder

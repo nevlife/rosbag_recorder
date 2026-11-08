@@ -69,6 +69,8 @@ The same names are the bag topics of the session channels.
 
 The existing `Select`, `Status`, `Mark` and `CatalogDiff` service APIs remain available for scripts.
 Health and session metadata continue to be stored in the bag, with `summary.yaml` at session end.
+For each topic, `summary.yaml` gives the stored count from the closed bag as `written` and the
+messages that the writer cache lost as `dropped`. Raise `max_cache_mb` if `dropped` is not 0.
 Disk-space thresholds from the recording options still warn or stop recording.
 
 ## Flux bags

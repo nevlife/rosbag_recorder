@@ -10,7 +10,7 @@ Everything below is new since there is no release yet.
 ## Features
 
 - Session, health and marker messages and the control services (rosbag_recorder_msgs)
-- Recording node with SCV profiles, one shared subscription per topic and session channels in the bag (rosbag_recorder)
+- Recording node with profiles, one shared subscription per topic and session channels in the bag (rosbag_recorder)
 - rqt window with category and individual ROS/Flux checkboxes, recording controls and reception statistics (rosbag_recorder_rqt)
 - Direct raw Flux recording in the format supported by flux_bag, including unknown custom fingerprints (rosbag_recorder)
 - One bundled default profile; automatic sensor value checks and automatic value markers are no longer attached (rosbag_recorder)
@@ -20,6 +20,7 @@ Everything below is new since there is no release yet.
 
 - Do not publish the end session after shutdown (rosbag_recorder)
 - Build and test on Humble (rosbag_recorder)
+- Count stored messages in `summary.yaml` and report what the writer cache dropped (rosbag_recorder)
 
 ## Refactoring
 
@@ -28,6 +29,7 @@ Everything below is new since there is no release yet.
 - Publish on `~/output/{session,health,markers}`, remapped by the launch file to the unchanged `/rosbag_recorder/...` names (rosbag_recorder)
 - Read every parameter from `config/rosbag_recorder.param.yaml`; reject `hz_tolerance` outside 0.1 to 1.0 instead of clamping it (rosbag_recorder)
 - Move preflight, start modes, disk watch, summary, catalog diff and selection checks into ROS-free classes with unit tests; headers move to `src/` (rosbag_recorder)
+- Reject the unused catalog keys `heavy_threshold_kb` and `monitor_via` (rosbag_recorder)
 - Fail instead of recording empty values when git, `statvfs`, the directory size or the user name cannot be read (rosbag_recorder)
 
 - Query the graph only when it changes and cache the profile list (rosbag_recorder)

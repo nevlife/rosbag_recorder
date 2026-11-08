@@ -1,0 +1,9 @@
+name: burst
+description: overflow the writer cache
+groups: [burst]
+options:
+  start_mode: immediate
+  max_cache_mb: 1
+  split_duration_sec: 0
+  disk_warn_gb: 0.2
+  disk_stop_gb: 0.1

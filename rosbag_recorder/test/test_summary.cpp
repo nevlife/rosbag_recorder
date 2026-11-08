@@ -20,11 +20,14 @@ TEST(Summary, Yaml)
   s.preflight.resize(1);
   s.preflight[0].level = rosbag_recorder_msgs::msg::CheckResult::WARN;
   s.preflight[0].text = "disk";
-  s.topics.resize(1);
+  s.topics.resize(2);
   s.topics[0].name = "/a";
   s.topics[0].type = "std_msgs/msg/String";
   s.topics[0].written = 7;
   s.topics[0].status = rosbag_recorder_msgs::msg::TopicHealth::STALE;
+  s.topics[1].name = "/b";
+  s.topics[1].written = 3;
+  s.stored = {{"/a", 5}, {"/b", 3}};
   s.markers.resize(1);
   s.markers[0].stamp.sec = 1002;
   s.markers[0].stamp.nanosec = 500000000;
@@ -37,7 +40,10 @@ TEST(Summary, Yaml)
   EXPECT_EQ(y["bag_bytes"].as<int>(), 42);
   EXPECT_EQ(y["end_reason"].as<std::string>(), "user");
   EXPECT_EQ(y["preflight"].as<std::vector<std::string>>(), std::vector<std::string>{"warn: disk"});
-  EXPECT_EQ(y["topics"]["/a"]["written"].as<int>(), 7);
+  EXPECT_EQ(y["topics"]["/a"]["written"].as<int>(), 5);
+  EXPECT_EQ(y["topics"]["/a"]["dropped"].as<int>(), 2);
+  EXPECT_EQ(y["topics"]["/b"]["dropped"].as<int>(), 0);
+  EXPECT_EQ(rosbag_recorder::dropped(s), 2U);
   EXPECT_EQ(y["topics"]["/a"]["last_status"].as<std::string>(), "stale");
   EXPECT_EQ(
     y["markers"].as<std::vector<std::string>>(), std::vector<std::string>{"2.5 s [note] hello"});

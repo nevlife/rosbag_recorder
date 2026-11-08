@@ -13,6 +13,7 @@
 #include "rosbag2_compression/sequential_compression_writer.hpp"
 #include "rosbag2_cpp/converter_options.hpp"
 #include "rosbag2_cpp/writer.hpp"
+#include "rosbag2_storage/metadata_io.hpp"
 #include "selection.hpp"
 #include "session_info.hpp"
 #include "start_gate.hpp"
@@ -487,7 +488,7 @@ private:
     const std::shared_ptr<Stream> & s, const std::string & type, const rclcpp::QoS & qos)
   {
     rclcpp::SubscriptionOptions options;
-    // SCV saw Humble crash on QoS event handlers of subscriptions added while spinning.
+    // Humble can crash on QoS event handlers of subscriptions added while spinning.
     options.use_default_callbacks = false;
     std::weak_ptr<Stream> weak = s;
     s->subscription.reset();
@@ -777,11 +778,21 @@ private:
       directory_bytes(bag_path_),
       session_preflight_,
       {},
-      markers_};
+      markers_,
+      {}};
     for (const auto & [name, stream] : streams_) {
       summary.topics.push_back(stream->report(mono_now(), hz_tolerance_));
     }
+    for (const auto & t :
+         rosbag2_storage::MetadataIo().read_metadata(bag_path_).topics_with_message_count) {
+      summary.stored[t.topic_metadata.name] = t.message_count;
+    }
     std::ofstream(fs::path(bag_path_) / "summary.yaml") << summary_yaml(summary);
+    if (const std::uint64_t lost = dropped(summary)) {
+      message_ += ", writer cache dropped " + std::to_string(lost) + " messages";
+      RCLCPP_WARN(get_logger(), "%s", message_.c_str());
+      return;
+    }
     RCLCPP_INFO(get_logger(), "%s", message_.c_str());
   }
 

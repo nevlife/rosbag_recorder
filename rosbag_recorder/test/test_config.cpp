@@ -2,7 +2,6 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -15,8 +14,6 @@ using rosbag_recorder::ProfileStore;
 
 namespace
 {
-
-const char scv_dir[] = TEST_DATA_DIR "/scv";
 
 Catalog catalog(const std::string & text)
 {
@@ -45,74 +42,6 @@ void expect_error(const std::string & text, const std::string & part)
 
 }  // namespace
 
-TEST(ScvConfig, CatalogFields)
-{
-  const Catalog c = Catalog::load(std::string(scv_dir) + "/catalog.yaml");
-  EXPECT_EQ(c.groups.size(), 11U);
-  EXPECT_EQ(c.groups.front().name, "lidar");
-  const auto * packets = c.topic("/velodyne_packets");
-  ASSERT_TRUE(packets);
-  EXPECT_EQ(*packets->type, "velodyne_msgs/msg/VelodyneScan");
-  EXPECT_TRUE(packets->required);
-  EXPECT_DOUBLE_EQ(*packets->hz, 10.0);
-  const auto * raw = c.topic("/camera/camera/color/image_raw");
-  EXPECT_TRUE(raw->heavy);
-  EXPECT_TRUE(c.topic("/tf_static")->latched);
-  EXPECT_FALSE(c.topic("/ublox_gps_node/fix")->hz);
-}
-
-TEST(ScvConfig, EveryProfileResolvesLikeScv)
-{
-  const Catalog c = Catalog::load(std::string(scv_dir) + "/catalog.yaml");
-  const ProfileStore store(std::string(scv_dir) + "/profiles");
-  const YAML::Node golden = YAML::LoadFile(std::string(scv_dir) + "/resolved.yaml");
-  ASSERT_EQ(store.names().size(), golden.size());
-  for (const auto & name : store.names()) {
-    SCOPED_TRACE(name);
-    const auto r = store.resolve(name, c);
-    const YAML::Node g = golden[name];
-    EXPECT_EQ(r.chain, g["chain"].as<std::vector<std::string>>());
-    EXPECT_EQ(r.abstract, g["abstract"].as<bool>());
-    EXPECT_EQ(r.topics, g["topics"].as<std::vector<std::string>>());
-    EXPECT_EQ(r.unknown_topics, g["unknown_topics"].as<std::vector<std::string>>());
-    const YAML::Node o = g["options"];
-    EXPECT_EQ(r.options.storage, o["storage"].as<std::string>());
-    EXPECT_EQ(r.options.compression, o["compression"].as<std::string>());
-    EXPECT_EQ(r.options.split_duration_sec, o["split_duration_sec"].as<int>());
-    EXPECT_EQ(r.options.split_size_mb, o["split_size_mb"].as<int>());
-    EXPECT_EQ(r.options.heavy_qos, o["heavy_qos"].as<std::string>());
-    EXPECT_EQ(r.options.start_mode, o["start_mode"].as<std::string>());
-    EXPECT_EQ(r.options.wait_ready_sec, o["wait_ready_sec"].as<int>());
-    EXPECT_EQ(r.options.start_delay_sec, o["start_delay_sec"].as<int>());
-    EXPECT_DOUBLE_EQ(r.options.disk_warn_gb, o["disk_warn_gb"].as<double>());
-    EXPECT_DOUBLE_EQ(r.options.disk_stop_gb, o["disk_stop_gb"].as<double>());
-    EXPECT_EQ(r.options.max_cache_mb, o["max_cache_mb"].as<int>());
-  }
-}
-
-TEST(ScvConfig, PresetFollowsCompression)
-{
-  const Catalog c = Catalog::load(std::string(scv_dir) + "/catalog.yaml");
-  const ProfileStore store(std::string(scv_dir) + "/profiles");
-  EXPECT_EQ(store.resolve("drive_standard", c).options.preset(), "fastwrite");
-  EXPECT_EQ(store.resolve("long_transit", c).options.preset(), "zstd_fast");
-}
-
-// The original files, Korean descriptions included, when the SCV tree is at hand.
-TEST(ScvConfig, OriginalFiles)
-{
-  const char * dir = std::getenv("ROSBAG_RECORDER_SCV_CONFIG");
-  if (!dir) {
-    GTEST_SKIP() << "ROSBAG_RECORDER_SCV_CONFIG not set";
-  }
-  const Catalog c = Catalog::load(std::string(dir) + "/catalog.yaml");
-  const ProfileStore store(std::string(dir) + "/profiles");
-  const YAML::Node golden = YAML::LoadFile(std::string(scv_dir) + "/resolved.yaml");
-  for (const auto & name : store.names()) {
-    EXPECT_EQ(store.resolve(name, c).topics, golden[name]["topics"].as<std::vector<std::string>>());
-  }
-}
-
 TEST(Catalog, Errors)
 {
   expect_error("bogus: 1\n", "unknown keys [bogus]");
@@ -125,13 +54,16 @@ TEST(Catalog, Errors)
   expect_error("groups: {a: {topics: {/x: {colour: red}}}}\n", "unknown keys [colour]");
   expect_error("groups: {a: {topics: {/x: {}}}, b: {topics: {/x: {}}}}\n", "also in group a");
   expect_error("sources: {}\n", "unknown keys [sources]");
+  expect_error("heavy_threshold_kb: 500\n", "unknown keys [heavy_threshold_kb]");
+  expect_error(
+    "groups: {a: {topics: {/x: {monitor_via: /y}}}}\n", "unknown keys [monitor_via]");
 }
 
-TEST(Catalog, ScvKeysAreAcceptedAndSorted)
+TEST(Catalog, IgnoredKeysAreAcceptedAndSorted)
 {
   EXPECT_NO_THROW(
-    catalog("heavy_threshold_kb: 500\nauto_markers: [{label: x}]\nvalue_checks: {a: -1}\n"
-            "groups: {a: {topics: {/x: {size_kb: 1, monitor_via: /y}}}}\n"));
+    catalog("auto_markers: [{label: x}]\nvalue_checks: {a: -1}\n"
+            "groups: {a: {topics: {/x: {size_kb: 1}}}}\n"));
   const Catalog c = catalog(small_catalog);
   EXPECT_EQ(
     c.sort_topics({"/zz", "/b1", "/a2", "/a1"}),
@@ -198,6 +130,11 @@ TEST_F(Store, Inheritance)
   EXPECT_EQ(r.options.required_frames, std::vector<std::string>{"base_link"});
   EXPECT_FALSE(r.abstract);
   EXPECT_NE(r.to_yaml().find("split_duration_sec: 60"), std::string::npos);
+  EXPECT_EQ(r.options.preset(), "zstd_fast");
+  EXPECT_EQ(store.resolve("base", catalog(small_catalog)).options.preset(), "zstd_fast");
+  write("plain", "name: plain\n");
+  EXPECT_EQ(
+    ProfileStore(dir_).resolve("plain", catalog(small_catalog)).options.preset(), "fastwrite");
 }
 
 TEST_F(Store, Errors)

@@ -88,7 +88,6 @@ if(BUILD_TESTING)
     test/test_start_gate.cpp
     test/test_stream.cpp
     test/test_summary.cpp)
-  target_compile_definitions(test_core PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data")
   target_include_directories(test_core PRIVATE src)
   target_link_libraries(test_core ${PROJECT_NAME}_core)
 
@@ -108,6 +107,9 @@ if(BUILD_TESTING)
   add_launch_test(test/test_selection.launch.py
     TIMEOUT 120
     ENV ROS_DOMAIN_ID=95 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
+  add_launch_test(test/test_cache_drop.launch.py
+    TIMEOUT 120
+    ENV ROS_DOMAIN_ID=86 TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/data)
 endif()
 
 ament_package()
