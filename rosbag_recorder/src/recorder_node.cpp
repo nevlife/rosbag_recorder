@@ -29,6 +29,7 @@
 #include "rosbag_recorder_msgs/srv/catalog_diff.hpp"
 #include "rosbag_recorder_msgs/srv/list_topics.hpp"
 #include "rosbag_recorder_msgs/srv/mark.hpp"
+#include "rosbag_recorder_msgs/srv/save_profile.hpp"
 #include "rosbag_recorder_msgs/srv/select.hpp"
 #include "rosbag_recorder_msgs/srv/set_topics.hpp"
 #include "rosbag_recorder_msgs/srv/start.hpp"
@@ -104,9 +105,6 @@ public:
     const bool autostart = declare_parameter<bool>("autostart");
     label_ = declare_parameter<std::string>("label");
 
-    session_pub_ = create_publisher<Session>("~/output/session", session_qos());
-    health_pub_ = create_publisher<Health>("~/output/health", health_qos());
-    marker_pub_ = create_publisher<Marker>("~/output/markers", marker_qos());
     services();
     graph_event_ = get_graph_event();
     timer_ = create_wall_timer(std::chrono::seconds(1), [this] { tick(); });
@@ -177,6 +175,12 @@ private:
         on_mark(*req, *res);
       },
       qos);
+    save_profile_srv_ = create_service<srv::SaveProfile>(
+      "~/save_profile",
+      [this](
+        const std::shared_ptr<srv::SaveProfile::Request> req,
+        std::shared_ptr<srv::SaveProfile::Response> res) { on_save_profile(*req, *res); },
+      qos);
     status_srv_ = create_service<srv::Status>(
       "~/status",
       [this](
@@ -207,9 +211,8 @@ private:
 
   bool hidden(const std::string & topic) const
   {
-    return topic == session_pub_->get_topic_name() || topic == health_pub_->get_topic_name() ||
-           topic == marker_pub_->get_topic_name() || topic == "/rosout" ||
-           topic == "/parameter_events";
+    return topic == session_topic_ || topic == health_topic_ || topic == marker_topic_ ||
+           topic == "/rosout" || topic == "/parameter_events";
   }
 
   Catalog load_catalog() const
@@ -531,10 +534,9 @@ private:
     m.source = source;
     m.session_id = session_id_;
     if (writer_) {
-      writer_->write(m, marker_pub_->get_topic_name(), m.stamp);
+      writer_->write(m, marker_topic_, m.stamp);
       markers_.push_back(m);
     }
-    marker_pub_->publish(m);
   }
 
   template <class MessageT>
@@ -599,10 +601,10 @@ private:
       h.write_mbps = disk.write_mbps;
       h.remaining_min = disk.remaining_min;
       disk_stop = disk.stop;
-      record(h, health_pub_->get_topic_name());
+      record(h, health_topic_);
     }
     last_health_ = h;
-    health_pub_->publish(h);
+    health_report_ = h;
     if (disk_stop) {
       mark("disk_stop", "disk free " + fixed(h.disk_free_gb, 1) + " GB, recording stopped", "auto");
       finish("disk_low");
@@ -695,8 +697,7 @@ private:
     start_mono_ = mono_now();
     disk_watch_.reset();
     markers_.clear();
-    session_pub_->publish(start_session_);
-    record(start_session_, session_pub_->get_topic_name());
+    record(start_session_, session_topic_);
     state_ = Health::RECORDING;
     message_ = "recording " + session_id_;
     RCLCPP_INFO(get_logger(), "recording %s", bag_path_.c_str());
@@ -729,12 +730,9 @@ private:
     const std::string format = rmw_get_serialization_format();
     writer->open(storage, {format, format});
     for (const auto & [topic, type, qos] :
-         {std::make_tuple(
-            session_pub_->get_topic_name(), "rosbag_recorder_msgs/msg/Session", session_qos()),
-          std::make_tuple(
-            health_pub_->get_topic_name(), "rosbag_recorder_msgs/msg/Health", health_qos()),
-          std::make_tuple(
-            marker_pub_->get_topic_name(), "rosbag_recorder_msgs/msg/Marker", marker_qos())}) {
+         {std::make_tuple(session_topic_, "rosbag_recorder_msgs/msg/Session", session_qos()),
+          std::make_tuple(health_topic_, "rosbag_recorder_msgs/msg/Health", health_qos()),
+          std::make_tuple(marker_topic_, "rosbag_recorder_msgs/msg/Marker", marker_qos())}) {
       rosbag2_storage::TopicMetadata meta;
       meta.name = topic;
       meta.type = type;
@@ -762,10 +760,7 @@ private:
     end.end_reason = reason;
     end.bag_bytes = directory_bytes(bag_path_);
     end.markers = static_cast<std::uint32_t>(markers_.size());
-    if (get_node_base_interface()->get_context()->is_valid()) {
-      session_pub_->publish(end);
-    }
-    record(end, session_pub_->get_topic_name());
+    record(end, session_topic_);
     writer_->close();
     writer_.reset();
     paused_ = false;
@@ -779,7 +774,8 @@ private:
       session_preflight_,
       {},
       markers_,
-      {}};
+      {},
+      profile_->options.preset()};
     for (const auto & [name, stream] : streams_) {
       summary.topics.push_back(stream->report(mono_now(), hz_tolerance_));
     }
@@ -867,6 +863,9 @@ private:
         res.message = "no profile selected";
         return;
       }
+      if (!req.storage_preset.empty()) {
+        profile_->options.storage_preset = req.storage_preset;
+      }
       label_ = req.label;
       notes_ = req.notes;
       res.message = request_start(req.force);
@@ -936,6 +935,26 @@ private:
     return true;
   }
 
+  void on_save_profile(const srv::SaveProfile::Request & req, srv::SaveProfile::Response & res)
+  {
+    std::vector<std::string> topics;
+    for (const auto & topic : req.topics) {
+      if (topic.transport != "ros") {
+        res.message = "a profile holds ROS topics only: " + bag_name(topic.name, topic.transport);
+        return;
+      }
+      topics.push_back(topic.name);
+    }
+    try {
+      res.path = ProfileStore((fs::path(config_dir_) / "profiles").string())
+                   .save(req.profile, topics, req.overwrite);
+      res.success = true;
+      res.message = "saved " + res.path;
+    } catch (const std::exception & e) {
+      res.message = e.what();
+    }
+  }
+
   void on_status(srv::Status::Response & res)
   {
     res.state = state_;
@@ -943,8 +962,10 @@ private:
     res.profile = profile_ ? profile_->name : "";
     res.bag_path = bag_path_;
     res.config_dir = config_dir_;
+    res.storage_preset = profile_ ? profile_->options.preset() : "";
     res.message = message_;
     res.preflight = preflight_;
+    res.health = health_report_;
     const ProfileStore store((fs::path(config_dir_) / "profiles").string());
     std::map<std::string, std::pair<fs::file_time_type, bool>> listed;
     for (const auto & name : store.names()) {
@@ -993,6 +1014,10 @@ private:
     res.message = std::to_string(res.items.size()) + " differences";
   }
 
+  // Bag topics of the session channels: /<node name>/<channel>, outside any namespace.
+  const std::string session_topic_{"/" + std::string(get_name()) + "/session"};
+  const std::string health_topic_{"/" + std::string(get_name()) + "/health"};
+  const std::string marker_topic_{"/" + std::string(get_name()) + "/markers"};
   std::string config_dir_, output_dir_, workspace_;
   std::vector<std::string> param_globs_;
   std::int64_t param_copy_max_kb_{0};
@@ -1015,6 +1040,8 @@ private:
   std::string label_, notes_;
   StartGate start_gate_;
   Health last_health_;
+  // As report() built it; last_health_ also changes between reports.
+  Health health_report_;
   double tick_ms_{0.0};
   rclcpp::Event::SharedPtr graph_event_;
   bool graph_dirty_{true};
@@ -1031,9 +1058,6 @@ private:
   std::vector<Marker> markers_;
   DiskWatch disk_watch_;
 
-  rclcpp::Publisher<Session>::SharedPtr session_pub_;
-  rclcpp::Publisher<Health>::SharedPtr health_pub_;
-  rclcpp::Publisher<Marker>::SharedPtr marker_pub_;
   rclcpp::Service<srv::ListTopics>::SharedPtr topics_srv_;
   rclcpp::Service<srv::SetTopics>::SharedPtr set_topics_srv_;
   rclcpp::Service<srv::Select>::SharedPtr select_srv_;
@@ -1041,6 +1065,7 @@ private:
   rclcpp::Service<srv::Stop>::SharedPtr stop_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr pause_srv_, resume_srv_, split_srv_;
   rclcpp::Service<srv::Mark>::SharedPtr mark_srv_;
+  rclcpp::Service<srv::SaveProfile>::SharedPtr save_profile_srv_;
   rclcpp::Service<srv::Status>::SharedPtr status_srv_;
   rclcpp::Service<srv::CatalogDiff>::SharedPtr diff_srv_;
   rclcpp::TimerBase::SharedPtr timer_;

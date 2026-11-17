@@ -97,11 +97,8 @@ class TestRecord(unittest.TestCase):
             self.spin(0.5)
         self.assertEqual(self.call(Status, 'status').state, Health.RECORDING)
 
-        healths = []
-        sub = self.node.create_subscription(Health, '/rosbag_recorder/health', healths.append, 10)
         self.spin(5.0)
-        self.node.destroy_subscription(sub)
-        type(self).live = {t.name: t for t in healths[-1].topics}
+        type(self).live = {t.name: t for t in self.call(Status, 'status').health.topics}
 
         for topic in ('/test/points', '/test/chatter', '/tf_static'):
             infos = self.node.get_subscriptions_info_by_topic(topic)
@@ -144,6 +141,7 @@ class TestRecord(unittest.TestCase):
         self.assertRegex(info, r'/tf_static \| Type: tf2_msgs/msg/TFMessage \| Count: 1 ')
         summary = yaml.safe_load(open(os.path.join(self.bag, 'summary.yaml')))
         self.assertEqual(summary['end_reason'], 'user')
+        self.assertEqual(summary['storage_preset'], 'none')
         self.assertGreater(summary['topics']['/test/points']['written'], 40)
         self.assertTrue(any('hello' in m for m in summary['markers']))
 

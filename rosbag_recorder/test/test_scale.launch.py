@@ -14,7 +14,6 @@ from launch_ros.actions import Node
 import launch_testing.actions
 import pytest
 import rclpy
-from rosbag_recorder_msgs.msg import Health
 from rosbag_recorder_msgs.msg import TopicHealth
 from rosbag_recorder_msgs.srv import Select
 from rosbag_recorder_msgs.srv import Start
@@ -96,7 +95,6 @@ class TestScale(unittest.TestCase):
         cls.node = rclpy.create_node('rosbag_recorder_scale_client')
         cls.healths = []
         cls.clients = {}
-        cls.node.create_subscription(Health, '/rosbag_recorder/health', cls.healths.append, 10)
 
     @classmethod
     def tearDownClass(cls):
@@ -119,6 +117,13 @@ class TestScale(unittest.TestCase):
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             rclpy.spin_once(self.node, timeout_sec=0.1)
+            self.collect_health()
+
+    def collect_health(self):
+        # Status returns the last report; keep each report once, as a subscription received them.
+        health = self.call(Status, 'status')[0].health
+        if not self.healths or health.stamp != self.healths[-1].stamp:
+            self.healths.append(health)
 
     def rss_mb(self, pid):
         with open(f'/proc/{pid}/status') as f:

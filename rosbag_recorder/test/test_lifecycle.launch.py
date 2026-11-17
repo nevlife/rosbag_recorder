@@ -1,4 +1,4 @@
-"""Exercise profile changes, start validation, value recovery and publisher QoS changes."""
+"""Exercise profile switches and saves, start validation, value recovery and QoS changes."""
 
 import importlib.util
 from pathlib import Path
@@ -16,6 +16,8 @@ from rclpy.qos import QoSProfile
 from rclpy.qos import ReliabilityPolicy
 from rosbag_recorder_msgs.msg import Health
 from rosbag_recorder_msgs.msg import TopicHealth
+from rosbag_recorder_msgs.msg import TopicSelection
+from rosbag_recorder_msgs.srv import SaveProfile
 from rosbag_recorder_msgs.srv import Select
 from rosbag_recorder_msgs.srv import Start
 from rosbag_recorder_msgs.srv import Status
@@ -89,6 +91,9 @@ class TestLifecycle(unittest.TestCase):
         finally:
             self.node.destroy_client(client)
 
+    def health(self):
+        return self.call(Status, 'status').health
+
     def until(self, predicate, timeout=12):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -98,21 +103,20 @@ class TestLifecycle(unittest.TestCase):
         self.fail('condition did not become true')
 
     def test_1_profile_switch_and_immediate_stop(self):
-        health = []
-        sub = self.node.create_subscription(Health, '/rosbag_recorder/health', health.append, 10)
-        try:
-            self.assertTrue(self.call(Select, 'select', profile='a').success)
-            self.until(lambda: health and health[-1].profile == 'a')
-            selected = self.call(Select, 'select', profile='b')
-            self.assertTrue(selected.success)
-            self.assertFalse(any('/lifecycle/a' in c.text for c in selected.preflight))
-            self.assertTrue(self.call(Start, 'start', force=True).success)
-            stopped = self.call(Stop, 'stop')
-            self.assertTrue(stopped.success)
-            summary = yaml.safe_load((Path(stopped.bag_path) / 'summary.yaml').read_text())
-            self.assertEqual(set(summary['topics']), {'/lifecycle/b'})
-        finally:
-            self.node.destroy_subscription(sub)
+        self.assertTrue(self.call(Select, 'select', profile='a').success)
+        self.until(lambda: self.health().profile == 'a')
+        selected = self.call(Select, 'select', profile='b')
+        self.assertTrue(selected.success)
+        self.assertFalse(any('/lifecycle/a' in c.text for c in selected.preflight))
+        self.assertEqual(self.call(Status, 'status').storage_preset, 'none')
+        started = self.call(Start, 'start', force=True, storage_preset='zstd_small')
+        self.assertTrue(started.success, started.message)
+        self.assertEqual(self.call(Status, 'status').storage_preset, 'zstd_small')
+        stopped = self.call(Stop, 'stop')
+        self.assertTrue(stopped.success)
+        summary = yaml.safe_load((Path(stopped.bag_path) / 'summary.yaml').read_text())
+        self.assertEqual(set(summary['topics']), {'/lifecycle/b'})
+        self.assertEqual(summary['storage_preset'], 'zstd_small')
 
     def test_2_autostart_uses_start_validation(self):
         for name, text in [('abstract', 'is abstract'), ('disk', 'preflight:')]:
@@ -125,38 +129,28 @@ class TestLifecycle(unittest.TestCase):
             self.assertIn(text, response.message)
 
     def test_3_zero_imu_values_are_recorded_without_semantic_issues(self):
-        health = []
-        health_sub = self.node.create_subscription(
-            Health, '/rosbag_recorder/health', health.append, 10
-        )
         publisher = self.node.create_publisher(Imu, '/lifecycle/imu', 10)
         self.assertTrue(self.call(Select, 'select', profile='imu').success)
         self.assertTrue(self.call(Start, 'start', force=True).success)
         timer = self.node.create_timer(0.05, lambda: publisher.publish(Imu()))
         try:
-            self.until(lambda: health and health[-1].topics and health[-1].topics[0].written > 10)
-            self.assertEqual(health[-1].topics[0].status, TopicHealth.OK)
-            self.assertFalse(health[-1].topics[0].issues)
+            self.until(lambda: any(t.written > 10 for t in self.health().topics))
+            imu = self.health().topics[0]
+            self.assertEqual(imu.status, TopicHealth.OK)
+            self.assertFalse(imu.issues)
         finally:
             self.node.destroy_timer(timer)
             self.node.destroy_publisher(publisher)
             self.call(Stop, 'stop')
-            self.node.destroy_subscription(health_sub)
 
     def test_4_reconnect_after_qos_change(self):
-        health = []
-        sub = self.node.create_subscription(Health, '/rosbag_recorder/health', health.append, 10)
         publisher = self.node.create_publisher(String, '/lifecycle/b', 10)
         self.assertTrue(self.call(Select, 'select', profile='b').success)
         self.assertTrue(self.call(Start, 'start', force=True).success)
         timer = self.node.create_timer(0.05, lambda: publisher.publish(String(data='qos')))
 
         def topic():
-            return (
-                next((t for t in health[-1].topics if t.name == '/lifecycle/b'), None)
-                if health
-                else None
-            )
+            return next((t for t in self.health().topics if t.name == '/lifecycle/b'), None)
 
         try:
             self.until(lambda: topic() and topic().written > 0)
@@ -173,4 +167,20 @@ class TestLifecycle(unittest.TestCase):
             self.node.destroy_timer(timer)
             self.node.destroy_publisher(publisher)
             self.call(Stop, 'stop')
-            self.node.destroy_subscription(sub)
+
+    def test_5_save_profile_writes_ros_topics(self):
+        flux = [TopicSelection(name='/lifecycle/a', transport='flux')]
+        response = self.call(SaveProfile, 'save_profile', profile='saved', topics=flux)
+        self.assertFalse(response.success)
+        self.assertIn('ROS topics only', response.message)
+        ros = [TopicSelection(name='/lifecycle/a', transport='ros')]
+        response = self.call(SaveProfile, 'save_profile', profile='saved', topics=ros)
+        self.assertTrue(response.success, response.message)
+        self.assertEqual(response.path, str(ROOT / 'profiles' / 'saved.yaml'))
+        again = self.call(SaveProfile, 'save_profile', profile='saved', topics=ros)
+        self.assertFalse(again.success)
+        self.assertIn('exists', again.message)
+        self.assertIn('saved', self.call(Status, 'status').profiles)
+        selected = self.call(Select, 'select', profile='saved')
+        self.assertTrue(selected.success, selected.message)
+        self.until(lambda: [t.name for t in self.health().topics] == ['/lifecycle/a'])

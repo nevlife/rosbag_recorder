@@ -51,6 +51,7 @@ std::string summary_yaml(const Summary & s)
   out << YAML::BeginMap;
   out << YAML::Key << "session_id" << YAML::Value << s.end.session_id;
   out << YAML::Key << "profile" << YAML::Value << s.end.profile;
+  out << YAML::Key << "storage_preset" << YAML::Value << s.storage_preset;
   out << YAML::Key << "label" << YAML::Value << s.end.label;
   out << YAML::Key << "notes" << YAML::Value << s.end.notes;
   out << YAML::Key << "host" << YAML::Value << s.host;

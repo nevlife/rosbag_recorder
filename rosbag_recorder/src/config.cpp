@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <regex>
 #include <set>
@@ -344,7 +345,7 @@ std::string RecordOptions::preset() const
   if (!storage_preset.empty() || storage != "mcap") {
     return storage_preset;
   }
-  return compression == "zstd" ? "zstd_fast" : "fastwrite";
+  return compression == "zstd" ? "zstd_fast" : "none";
 }
 
 YAML::Node RecordOptions::to_yaml() const
@@ -462,6 +463,32 @@ ResolvedProfile ProfileStore::resolve(const std::string & name, const Catalog & 
 {
   std::vector<std::string> stack{name};
   return resolve(load(name), catalog, stack);
+}
+
+std::string ProfileStore::save(
+  const std::string & name, const std::vector<std::string> & topics, bool overwrite) const
+{
+  YAML::Node root;
+  root["name"] = name;
+  root["topics"] = topics;
+  root["options"]["start_mode"] = "immediate";
+  const fs::path path = fs::path(directory_) / (name + ".yaml");
+  Profile::parse(root, path.filename().string());
+  if (!overwrite && fs::exists(path)) {
+    throw ConfigError("profile " + name + " exists (" + path.string() + ")");
+  }
+  fs::create_directories(directory_);
+  // The status service lists profiles every second; a rename never shows it a partial file.
+  const fs::path partial = path.string() + ".partial";
+  {
+    std::ofstream out(partial);
+    out << YAML::Dump(root) << "\n";
+    if (!out) {
+      throw ConfigError("cannot write " + partial.string());
+    }
+  }
+  fs::rename(partial, path);
+  return path.string();
 }
 
 ResolvedProfile ProfileStore::resolve(

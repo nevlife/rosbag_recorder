@@ -133,8 +133,10 @@ TEST_F(Store, Inheritance)
   EXPECT_EQ(r.options.preset(), "zstd_fast");
   EXPECT_EQ(store.resolve("base", catalog(small_catalog)).options.preset(), "zstd_fast");
   write("plain", "name: plain\n");
+  EXPECT_EQ(ProfileStore(dir_).resolve("plain", catalog(small_catalog)).options.preset(), "none");
+  write("fast", "name: fast\noptions: {compression: zstd, storage_preset: fastwrite}\n");
   EXPECT_EQ(
-    ProfileStore(dir_).resolve("plain", catalog(small_catalog)).options.preset(), "fastwrite");
+    ProfileStore(dir_).resolve("fast", catalog(small_catalog)).options.preset(), "fastwrite");
 }
 
 TEST_F(Store, Errors)
@@ -157,4 +159,23 @@ TEST_F(Store, Errors)
   EXPECT_NE(resolve_error("wait").find("wait_ready_sec"), std::string::npos);
   EXPECT_NE(resolve_error("renamed").find("differ"), std::string::npos);
   EXPECT_NE(resolve_error("missing").find("no profile missing"), std::string::npos);
+}
+
+TEST_F(Store, Save)
+{
+  std::filesystem::remove_all(dir_ + "/new");
+  const ProfileStore store(dir_ + "/new");
+  const auto path = store.save("picked", {"/a1", "/extra"}, false);
+  EXPECT_EQ(path, dir_ + "/new/picked.yaml");
+  const auto r = store.resolve("picked", catalog(small_catalog));
+  EXPECT_EQ(r.topics, std::vector<std::string>{"/a1"});
+  EXPECT_EQ(r.unknown_topics, std::vector<std::string>{"/extra"});
+  EXPECT_EQ(r.options.start_mode, "immediate");
+  EXPECT_EQ(store.names(), std::vector<std::string>{"picked"});
+  EXPECT_THROW(store.save("picked", {"/b1"}, false), ConfigError);
+  store.save("picked", {"/b1"}, true);
+  EXPECT_EQ(
+    store.resolve("picked", catalog(small_catalog)).topics, std::vector<std::string>{"/b1"});
+  EXPECT_THROW(store.save("Bad", {"/a1"}, false), ConfigError);
+  EXPECT_THROW(store.save("p", {"nope"}, false), ConfigError);
 }

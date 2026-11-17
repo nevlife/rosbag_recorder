@@ -1,4 +1,4 @@
-# Recorder state and per-topic quality, published and recorded once per report period.
+# Recorder state and per-topic quality, recorded once per report period and returned by Status.
 uint8 IDLE=0
 uint8 PREVIEW=1
 uint8 WAITING=2

@@ -12,14 +12,14 @@ The main checks are:
 | Test                                        | Behavior                                                                                                                                                                                                       |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_selection.launch.py`                  | ROS and Flux with the same name, categories independent of type, unknown custom Flux fingerprints, byte and metadata preservation, publisher restart, pause/resume, selection changes rejected while recording |
-| `test_lifecycle.launch.py`                  | Profile changes, immediate stop, autostart validation, no automatic semantic IMU issues, QoS reconnection                                                                                                      |
+| `test_lifecycle.launch.py`                  | Profile changes, immediate stop, autostart validation, no automatic semantic IMU issues, QoS reconnection, profiles saved through `SaveProfile`                                                                |
 | `test_record.launch.py`                     | Large ROS messages, manual markers through the service API, split, and bag readback                                                                                                                            |
 | `test_cache_drop.launch.py`                 | A 1 MiB writer cache overflowed by 1 MiB messages; the `summary.yaml` counts match the bag                                                                                                                     |
-| `rosbag_recorder_rqt/test/test_rqt.py`      | Category and individual checkboxes, ROS/Flux distinction, selection preservation during discovery, statistics, selection applied before Start                                                                  |
+| `rosbag_recorder_rqt/test/test_rqt.py`      | Category and individual checkboxes, ROS/Flux distinction, selection preservation during discovery, statistics, selection applied before Start, profile list and Save profile                                   |
 | `rosbag_recorder_rqt/test/test_rqt_perf.py` | 500 inputs keep their selection and item identity across repeated updates and newly discovered topics                                                                                                          |
 | `rosbag_recorder_rqt/test/test_launcher.py` | Default configuration, recorder reuse, and uninterrupted recording when the offscreen GUI closes and reopens                                                                                                   |
 
-Core gtests (`test_core`) cover profile resolution, catalog parsing, rate calculation, preflight,
+Core gtests (`test_core`) cover profile resolution and saving, catalog parsing, rate calculation, preflight,
 the start modes, the disk watch, the summary, the catalog diff, topic selection and session
 metadata. The launch tests start the recorder through `recorder.launch.py`, so they use its
 container, parameter file and remaps. C++ and Python style checks run through the package linters.

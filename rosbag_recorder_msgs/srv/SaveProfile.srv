@@ -1,0 +1,8 @@
+# Write ROS topics as profiles/<profile>.yaml in config_dir; the profile starts immediately.
+string profile
+TopicSelection[] topics
+bool overwrite
+---
+bool success
+string message
+string path

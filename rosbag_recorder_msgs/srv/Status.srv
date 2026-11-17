@@ -4,6 +4,10 @@ string session_id
 string profile
 string bag_path
 string config_dir
+# Storage preset of the selection; an open session records with it.
+string storage_preset
 string[] profiles
 string message
 CheckResult[] preflight
+# The last report; its stamp is zero before the first report.
+Health health

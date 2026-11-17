@@ -25,6 +25,7 @@ struct Summary
   std::vector<rosbag_recorder_msgs::msg::Marker> markers;
   // Message count per topic in the closed bag's metadata.
   std::map<std::string, std::uint64_t> stored;
+  std::string storage_preset;
 };
 
 // summary.yaml, written next to the bag at session end.

@@ -19,6 +19,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   srv/ListTopics.srv
   srv/SetTopics.srv
   srv/Mark.srv
+  srv/SaveProfile.srv
   srv/Select.srv
   srv/Start.srv
   srv/Status.srv

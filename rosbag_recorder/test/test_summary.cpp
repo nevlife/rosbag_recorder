@@ -17,6 +17,7 @@ TEST(Summary, Yaml)
   s.host = "robot";
   s.duration_s = 10.04;
   s.bag_bytes = 42;
+  s.storage_preset = "none";
   s.preflight.resize(1);
   s.preflight[0].level = rosbag_recorder_msgs::msg::CheckResult::WARN;
   s.preflight[0].text = "disk";
@@ -36,6 +37,7 @@ TEST(Summary, Yaml)
   const YAML::Node y = YAML::Load(rosbag_recorder::summary_yaml(s));
   EXPECT_EQ(y["session_id"].as<std::string>(), "20250101_000000_p");
   EXPECT_EQ(y["host"].as<std::string>(), "robot");
+  EXPECT_EQ(y["storage_preset"].as<std::string>(), "none");
   EXPECT_EQ(y["duration_s"].as<std::string>(), "10.0");
   EXPECT_EQ(y["bag_bytes"].as<int>(), 42);
   EXPECT_EQ(y["end_reason"].as<std::string>(), "user");

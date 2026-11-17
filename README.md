@@ -17,8 +17,8 @@ rosbag_recorder
 `ros2 launch rosbag_recorder recorder.launch.py`, which runs the node in a `flux_components`
 component container. An rclcpp executor or container delivers no Flux frame.
 
-Check individual topics or an entire category. Topics that have no configured category appear
-under `Uncategorized`. Click Preview selection to monitor the selected inputs, or Start to apply
+Pick a profile, or check individual topics or an entire category. Topics that have no configured
+category appear under `Uncategorized`. Save profile stores the checked topics as a profile. The Storage preset list picks the MCAP preset (`none` by default). Click Preview selection to monitor the selected inputs, or Start to apply
 the selection and record. Stop ends the session. Pause, Resume and Split control an open session.
 Closing the window leaves the recorder running; run `rosbag_recorder` again to reconnect.
 
@@ -44,9 +44,10 @@ copy path and are not supported by this recorder.
 ## Configuration
 
 The bundled catalog groups topics by explicit name. A category applies to both transports.
-Use `rosbag_recorder --config-dir /path/to/config` to supply another catalog. There is one empty
-`default` profile; topics are chosen in the window. Topic selection remains active in the running
-recorder when the window is closed and reopened.
+Use `rosbag_recorder --config-dir /path/to/config` to supply another catalog and its
+`profiles/`. The bundled folder has one empty `default` profile. Topic selection remains active in
+the running recorder when the window is closed and reopened. For scripts,
+`rosbag_recorder --profile NAME --autostart --no-gui` records a profile without the window.
 
 See [configuration](docs/configuration.md), [usage](docs/usage.md), and [testing](docs/testing.md).
-The older profile service APIs remain available for scripted integrations.
+The profile service APIs remain available for scripted integrations.

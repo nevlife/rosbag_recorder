@@ -55,8 +55,6 @@ def test_recording_survives_gui_exit(tmp_path, monkeypatch):
     node = rclpy.create_node('launcher_test_client', context=context)
     executor = SingleThreadedExecutor(context=context)
     executor.add_node(node)
-    health = []
-    node.create_subscription(Health, '/rosbag_recorder/health', health.append, 10)
     publisher = node.create_publisher(String, '/launcher/data', 10)
     node.create_timer(0.05, lambda: publisher.publish(String(data='recording')))
 
@@ -80,7 +78,8 @@ def test_recording_survives_gui_exit(tmp_path, monkeypatch):
         raise AssertionError('condition did not become true')
 
     def written():
-        return health[-1].topics[0].written if health and health[-1].topics else 0
+        topics = call(Status, 'status').health.topics
+        return topics[0].written if topics else 0
 
     def gui_ready(pid):
         name = f'rqt_gui_py_node_{pid}'
@@ -121,7 +120,7 @@ def test_recording_survives_gui_exit(tmp_path, monkeypatch):
             before = written()
             gui.send_signal(signal.SIGINT)
             gui.wait(timeout=10)
-            until(lambda: node.count_subscribers('/rosbag_recorder/health') == 1)
+            until(lambda: f'rqt_gui_py_node_{gui.pid}' not in node.get_node_names())
             until(lambda: written() > before + 10)
             assert daemon.poll() is None
             assert call(Status, 'status').state == Health.RECORDING

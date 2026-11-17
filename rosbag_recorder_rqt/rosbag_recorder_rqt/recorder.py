@@ -5,9 +5,12 @@ from python_qt_binding.QtCore import QTimer
 from python_qt_binding.QtCore import Signal
 from python_qt_binding.QtGui import QBrush
 from python_qt_binding.QtGui import QColor
+from python_qt_binding.QtWidgets import QComboBox
 from python_qt_binding.QtWidgets import QHBoxLayout
 from python_qt_binding.QtWidgets import QHeaderView
+from python_qt_binding.QtWidgets import QInputDialog
 from python_qt_binding.QtWidgets import QLabel
+from python_qt_binding.QtWidgets import QMessageBox
 from python_qt_binding.QtWidgets import QPushButton
 from python_qt_binding.QtWidgets import QTreeWidget
 from python_qt_binding.QtWidgets import QTreeWidgetItem
@@ -16,6 +19,8 @@ from python_qt_binding.QtWidgets import QWidget
 from rosbag_recorder_msgs.msg import Health
 from rosbag_recorder_msgs.msg import TopicSelection
 from rosbag_recorder_msgs.srv import ListTopics
+from rosbag_recorder_msgs.srv import SaveProfile
+from rosbag_recorder_msgs.srv import Select
 from rosbag_recorder_msgs.srv import SetTopics
 from rosbag_recorder_msgs.srv import Start
 from rosbag_recorder_msgs.srv import Status
@@ -28,12 +33,12 @@ from . import rows
 PREFIX = '/rosbag_recorder/'
 COLUMNS = ('Topic', 'Transport', 'Type', 'Status', 'Hz', 'Age s', 'Written', 'Publishers')
 WIDTHS = (360, 80, 210, 130, 70, 70, 90, 80)
+PRESETS = ('none', 'fastwrite', 'zstd_fast', 'zstd_small')
 
 
 class RecorderWidget(QWidget):
     """Select ROS and Flux topics by name, and show recording statistics."""
 
-    health_received = Signal(object)
     replied = Signal(str, object)
 
     def __init__(self, node):
@@ -43,16 +48,14 @@ class RecorderWidget(QWidget):
         self.clients = {}
         self.pending = set()
         self.items = {}
+        self.profiles = []
         self.signature = None
         self.last_health = None
         self.start_after_selection = False
         self.dirty = False
+        self.preset_chosen = False
         self.build()
-        self.health_received.connect(self.on_health)
         self.replied.connect(self.on_reply)
-        self.sub = node.create_subscription(
-            Health, PREFIX + 'health', lambda m: self.health_received.emit(m), 10
-        )
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(1000)
@@ -73,6 +76,21 @@ class RecorderWidget(QWidget):
         self.checks = QLabel('')
         self.checks.setWordWrap(True)
         controls = QHBoxLayout()
+        self.profile_box = QComboBox()
+        self.profile_box.setMinimumContentsLength(16)
+        self.profile_box.addItem('')
+        self.profile_box.activated.connect(self.choose_profile)
+        self.save_button = QPushButton('Save profile')
+        self.save_button.clicked.connect(self.save_profile)
+        controls.addWidget(QLabel('Profile'))
+        controls.addWidget(self.profile_box)
+        controls.addWidget(self.save_button)
+        self.preset_box = QComboBox()
+        self.preset_box.addItems(PRESETS)
+        self.preset_box.setToolTip('MCAP storage preset; fastwrite writes no index')
+        self.preset_box.activated.connect(self.choose_preset)
+        controls.addWidget(QLabel('Storage preset'))
+        controls.addWidget(self.preset_box)
         self.preview_button = QPushButton('Preview selection')
         self.preview_button.clicked.connect(self.select)
         self.start_button = QPushButton('Start')
@@ -134,13 +152,41 @@ class RecorderWidget(QWidget):
         self.start_after_selection = False
         self.call(SetTopics, 'set_topics', topics=self.selected_topics())
 
+    def choose_profile(self, index):
+        self.preset_chosen = False
+        if index > 0:
+            self.call(Select, 'select', profile=self.profiles[index - 1])
+
+    def choose_preset(self, _):
+        self.preset_chosen = True
+
+    def request_start(self):
+        self.call(Start, 'start', storage_preset=self.preset_box.currentText())
+
+    def save_profile(self):
+        topics = self.selected_topics()
+        if not topics:
+            self.message.setText('Select at least one topic')
+            return
+        name, ok = QInputDialog.getText(
+            self, 'Save profile', 'Profile name (lowercase letters, digits and _):'
+        )
+        if not ok or not name:
+            return
+        overwrite = name in self.profiles
+        if overwrite:
+            answer = QMessageBox.question(self, 'Save profile', f'Replace profile {name}?')
+            if answer != QMessageBox.Yes:
+                return
+        self.call(SaveProfile, 'save_profile', profile=name, topics=topics, overwrite=overwrite)
+
     def start(self):
         topics = self.selected_topics()
         if not topics:
             self.message.setText('Select at least one topic')
             return
         if not self.dirty:
-            self.call(Start, 'start')
+            self.request_start()
             return
         self.start_after_selection = True
         self.call(SetTopics, 'set_topics', topics=topics)
@@ -157,16 +203,38 @@ class RecorderWidget(QWidget):
             return
         if name == 'status':
             self.show_checks(response.preflight)
+            self.show_profiles(response.profiles, response.profile)
+            # Until the user picks a preset, the box shows the selection's.
+            if not self.preset_chosen and response.storage_preset in PRESETS:
+                self.preset_box.setCurrentText(response.storage_preset)
+            session_preset = response.storage_preset if response.session_id else ''
+            if response.health.stamp.sec or response.health.stamp.nanosec:
+                self.on_health(response.health, session_preset)
             return
         if hasattr(response, 'preflight'):
             self.show_checks(response.preflight)
         self.message.setText(f'{name}: {response.message}')
+        if name == 'start' and response.success:
+            self.preset_chosen = False
+        if name == 'select' and response.success:
+            # The topic list then checks exactly the profile's topics.
+            self.dirty = False
+            self.call(ListTopics, 'topics')
         if name == 'set_topics':
             if response.success:
                 self.dirty = False
             if response.success and self.start_after_selection:
-                self.call(Start, 'start')
+                self.request_start()
             self.start_after_selection = False
+
+    def show_profiles(self, profiles, current):
+        if list(profiles) != self.profiles:
+            self.profiles = list(profiles)
+            self.profile_box.clear()
+            self.profile_box.addItems([''] + self.profiles)
+        self.profile_box.setCurrentIndex(
+            self.profiles.index(current) + 1 if current in self.profiles else 0
+        )
 
     def show_checks(self, checks):
         self.checks.setText(' | '.join(rows.check_line(c) for c in checks))
@@ -207,12 +275,17 @@ class RecorderWidget(QWidget):
         if self.last_health:
             self.refresh_health()
 
-    def on_health(self, health):
+    def on_health(self, health, session_preset=''):
         self.last_health = health
         self.state.setText(rows.summary(health))
-        self.output.setText('Output: ' + health.output_dir)
+        output = 'Output: ' + health.output_dir
+        if session_preset:
+            output += '   storage preset: ' + session_preset
+        self.output.setText(output)
         editable = health.state in (Health.IDLE, Health.PREVIEW)
         self.tree.setEnabled(editable)
+        self.profile_box.setEnabled(editable)
+        self.preset_box.setEnabled(editable)
         self.preview_button.setEnabled(editable)
         self.start_button.setEnabled(editable)
         self.refresh_health()
@@ -237,7 +310,6 @@ class RecorderWidget(QWidget):
 
     def shutdown(self):
         self.timer.stop()
-        self.node.destroy_subscription(self.sub)
         for client in self.clients.values():
             self.node.destroy_client(client)
 

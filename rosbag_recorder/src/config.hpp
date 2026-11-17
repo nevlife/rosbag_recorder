@@ -115,6 +115,9 @@ public:
   std::vector<std::string> names() const;
   Profile load(const std::string & name) const;
   ResolvedProfile resolve(const std::string & name, const Catalog & catalog) const;
+  // Writes a profile with these topics that starts immediately; returns its path.
+  std::string save(
+    const std::string & name, const std::vector<std::string> & topics, bool overwrite) const;
 
 private:
   ResolvedProfile resolve(

@@ -19,11 +19,11 @@ import pytest
 import rclpy
 from rclpy.serialization import deserialize_message
 import rosbag2_py
-from rosbag_recorder_msgs.msg import Health
 from rosbag_recorder_msgs.msg import TopicSelection
 from rosbag_recorder_msgs.srv import ListTopics
 from rosbag_recorder_msgs.srv import SetTopics
 from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Status
 from rosbag_recorder_msgs.srv import Stop
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
@@ -75,6 +75,9 @@ class TestSelection(unittest.TestCase):
         finally:
             self.node.destroy_client(client)
 
+    def health(self):
+        return self.call(Status, 'status').health
+
     def until(self, predicate, timeout=15):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -84,8 +87,6 @@ class TestSelection(unittest.TestCase):
         self.fail('condition did not become true')
 
     def test_mixed_selection_pause_and_raw_round_trip(self):
-        health = []
-        sub = self.node.create_subscription(Health, '/rosbag_recorder/health', health.append, 10)
         ros = self.node.create_publisher(String, '/selection/data', 10)
         raw = flux.Publisher(
             self.node, '/selection/data', fingerprint=FINGERPRINT, slot_size=4096, slot_count=4
@@ -122,9 +123,8 @@ class TestSelection(unittest.TestCase):
             self.assertFalse(self.call(SetTopics, 'set_topics', topics=[]).success)
             self.until(
                 lambda: (
-                    health
-                    and len(health[-1].topics) == 2
-                    and all(t.written > 10 for t in health[-1].topics)
+                    len(topics := self.health().topics) == 2
+                    and all(t.written > 10 for t in topics)
                 )
             )
             self.assertTrue(self.call(Trigger, 'pause').success)
@@ -132,10 +132,10 @@ class TestSelection(unittest.TestCase):
             deadline = time.monotonic() + 1.3
             while time.monotonic() < deadline:
                 rclpy.spin_once(self.node, timeout_sec=0.05)
-            before = {t.name: t.written for t in health[-1].topics}
+            before = {t.name: t.written for t in self.health().topics}
             phase[0] = 3
             self.assertTrue(self.call(Trigger, 'resume').success)
-            self.until(lambda: all(t.written > before[t.name] + 10 for t in health[-1].topics))
+            self.until(lambda: all(t.written > before[t.name] + 10 for t in self.health().topics))
             stopped = self.call(Stop, 'stop')
             self.assertTrue(stopped.success)
             reader = rosbag2_py.SequentialReader()
@@ -170,11 +170,8 @@ class TestSelection(unittest.TestCase):
             raw = other = None
             gc.collect()
             self.node.destroy_publisher(ros)
-            self.node.destroy_subscription(sub)
 
     def test_flux_publisher_reconnects_with_new_slot_geometry(self):
-        health = []
-        sub = self.node.create_subscription(Health, '/rosbag_recorder/health', health.append, 10)
         publishers = [
             flux.Publisher(
                 self.node,
@@ -198,11 +195,11 @@ class TestSelection(unittest.TestCase):
             selection = TopicSelection(name='/selection/restart', transport='flux')
             self.assertTrue(self.call(SetTopics, 'set_topics', topics=[selection]).success)
             self.assertTrue(self.call(Start, 'start').success)
-            self.until(lambda: health and health[-1].topics and health[-1].topics[0].written > 5)
-            before = health[-1].topics[0].written
+            self.until(lambda: any(t.written > 5 for t in self.health().topics))
+            before = self.health().topics[0].written
             publishers[0] = None
             gc.collect()
-            self.until(lambda: health and health[-1].topics[0].publishers == 0)
+            self.until(lambda: self.health().topics[0].publishers == 0)
             entry = next(
                 t for t in self.call(ListTopics, 'topics').topics if t.name == '/selection/restart'
             )
@@ -216,7 +213,7 @@ class TestSelection(unittest.TestCase):
                 slot_size=8192,
                 slot_count=4,
             )
-            self.until(lambda: health[-1].topics[0].written > before + 5)
+            self.until(lambda: self.health().topics[0].written > before + 5)
             stopped = self.call(Stop, 'stop')
             self.assertTrue(stopped.success)
             reader = rosbag2_py.SequentialReader()
@@ -235,7 +232,7 @@ class TestSelection(unittest.TestCase):
             self.assertEqual(values, {1, 2})
             publishers[0] = None
             gc.collect()
-            self.until(lambda: health[-1].topics[0].publishers == 0)
+            self.until(lambda: self.health().topics[0].publishers == 0)
             self.assertTrue(self.call(SetTopics, 'set_topics', topics=[selection]).success)
             started = self.call(Start, 'start')
             self.assertTrue(started.success)
@@ -248,8 +245,8 @@ class TestSelection(unittest.TestCase):
             )
             self.until(
                 lambda: (
-                    health[-1].session_id == started.session_id
-                    and health[-1].topics[0].written > 5
+                    (health := self.health()).session_id == started.session_id
+                    and health.topics[0].written > 5
                 )
             )
             self.assertTrue(self.call(Stop, 'stop').success)
@@ -259,4 +256,3 @@ class TestSelection(unittest.TestCase):
             self.call(Stop, 'stop')
             publishers.clear()
             gc.collect()
-            self.node.destroy_subscription(sub)

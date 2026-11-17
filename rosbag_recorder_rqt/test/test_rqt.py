@@ -11,7 +11,10 @@ from rosbag_recorder_msgs.msg import AvailableTopic
 from rosbag_recorder_msgs.msg import CheckResult
 from rosbag_recorder_msgs.msg import Health
 from rosbag_recorder_msgs.msg import TopicHealth
+from rosbag_recorder_msgs.srv import Select
 from rosbag_recorder_msgs.srv import SetTopics
+from rosbag_recorder_msgs.srv import Start
+from rosbag_recorder_msgs.srv import Status
 from rosbag_recorder_rqt import rows
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -71,6 +74,8 @@ def test_refresh_preserves_selection_and_updates_statistics(widget):
     item.setCheckState(0, Qt.Checked)
     widget.on_topics(topics)
     assert item.checkState(0) == Qt.Checked
+    widget.on_reply('status', Status.Response())
+    assert widget.state.text() == 'no recorder' and widget.output.text() == ''
     health = Health(
         state=Health.PREVIEW,
         output_dir='/bags',
@@ -87,12 +92,13 @@ def test_refresh_preserves_selection_and_updates_statistics(widget):
             )
         ],
     )
-    widget.on_health(health)
+    health.stamp.sec = 1
+    widget.on_reply('status', Status.Response(health=health))
     assert item.text(4) == '12.0' and item.text(6) == '10'
     assert widget.items[('ros', '/a')].text(6) == '-'
     assert widget.output.text() == 'Output: /bags'
     health.state = Health.RECORDING
-    widget.on_health(health)
+    widget.on_reply('status', Status.Response(health=health))
     assert not widget.tree.isEnabled() and not widget.start_button.isEnabled()
     assert rows.check_line(CheckResult(level=CheckResult.WARN, text='disk')) == '[warn] disk'
 
@@ -111,6 +117,68 @@ def test_start_applies_selection_before_recording(widget, monkeypatch):
     widget.start()
     assert len(calls) == 2
     assert widget.message.text() == 'Select at least one topic'
+
+
+def test_profile_checks_its_topics_and_saves_the_selection(widget, monkeypatch):
+    from python_qt_binding.QtWidgets import QInputDialog
+    from python_qt_binding.QtWidgets import QMessageBox
+
+    calls = []
+    monkeypatch.setattr(widget, 'call', lambda srv, name, **fields: calls.append((name, fields)))
+    widget.on_reply('status', Status.Response(profiles=['e2e', 'lidar']))
+    box = widget.profile_box
+    assert [box.itemText(i) for i in range(box.count())] == ['', 'e2e', 'lidar']
+    widget.on_topics([topic('/a'), topic('/b')])
+    widget.items[('ros', '/b')].setCheckState(0, Qt.Checked)
+    widget.choose_profile(1)
+    assert calls[-1] == ('select', {'profile': 'e2e'})
+    widget.on_reply('select', Select.Response(success=True))
+    widget.on_topics([topic('/a', selected=True), topic('/b')])
+    assert [t.name for t in widget.selected_topics()] == ['/a']
+    widget.on_reply('status', Status.Response(profiles=['e2e', 'lidar'], profile='e2e'))
+    assert box.currentText() == 'e2e'
+    monkeypatch.setattr(QInputDialog, 'getText', lambda *args: ('mine', True))
+    widget.save_profile()
+    name, fields = calls[-1]
+    assert (name, fields['profile'], fields['overwrite']) == ('save_profile', 'mine', False)
+    assert [(t.transport, t.name) for t in fields['topics']] == [('ros', '/a')]
+    monkeypatch.setattr(QInputDialog, 'getText', lambda *args: ('e2e', True))
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.No)
+    widget.save_profile()
+    assert calls[-1][0] == 'save_profile' and calls[-1][1]['profile'] == 'mine'
+    monkeypatch.setattr(QMessageBox, 'question', lambda *args: QMessageBox.Yes)
+    widget.save_profile()
+    assert calls[-1][1]['profile'] == 'e2e' and calls[-1][1]['overwrite']
+
+
+def test_storage_preset_follows_the_selection_until_chosen(widget, monkeypatch):
+    calls = []
+    monkeypatch.setattr(widget, 'call', lambda srv, name, **fields: calls.append((name, fields)))
+    box = widget.preset_box
+    assert [box.itemText(i) for i in range(box.count())] == [
+        'none',
+        'fastwrite',
+        'zstd_fast',
+        'zstd_small',
+    ]
+    assert box.currentText() == 'none'
+    widget.on_reply('status', Status.Response(profile='z', storage_preset='zstd_fast'))
+    assert box.currentText() == 'zstd_fast'
+    box.setCurrentText('zstd_small')
+    widget.choose_preset(box.currentIndex())
+    widget.on_reply('status', Status.Response(profile='z', storage_preset='zstd_fast'))
+    assert box.currentText() == 'zstd_small'
+    widget.on_topics([topic('/a', selected=True)])
+    widget.start()
+    assert calls[-1] == ('start', {'storage_preset': 'zstd_small'})
+    widget.on_reply('start', Start.Response(success=True))
+    health = Health(state=Health.RECORDING, output_dir='/bags', remaining_min=math.nan)
+    health.stamp.sec = 1
+    widget.on_reply(
+        'status', Status.Response(session_id='s', storage_preset='zstd_small', health=health)
+    )
+    assert widget.output.text() == 'Output: /bags   storage preset: zstd_small'
+    assert box.currentText() == 'zstd_small' and not box.isEnabled()
 
 
 @pytest.mark.flake8

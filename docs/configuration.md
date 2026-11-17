@@ -2,8 +2,8 @@
 
 ## Categories
 
-The configuration folder contains `catalog.yaml`. The desktop window starts without a selected
-profile or any checked input. Categories are explicit lists of topic names; message types are
+The configuration folder contains `catalog.yaml` and `profiles/`. The desktop window starts
+without a selected profile or any checked input. Categories are explicit lists of topic names; message types are
 not used for classification. The same name belongs to the same category on ROS and Flux.
 
 ```yaml
@@ -34,12 +34,41 @@ a warning below 30 GB free and a stop threshold of 10 GB. Path and disk checks m
 recording. The bundled `profiles/default.yaml` is an empty profile for service-based startup;
 the desktop window applies its checkbox selection through `SetTopics`.
 
+### Storage preset
+
+MCAP bags are written with one of the rosbag2 MCAP presets:
+
+| `storage_preset` | Layout                                         |
+| ---------------- | ---------------------------------------------- |
+| `none`           | Chunks with a summary index, no compression    |
+| `fastwrite`      | No chunks and no index                         |
+| `zstd_fast`      | Chunks with an index, fastest zstd compression |
+| `zstd_small`     | Chunks with an index, slowest zstd compression |
+
+`none` keeps an index, so a reader opens the bag in seconds; `fastwrite` has none, so a reader
+must scan every file, which takes minutes for a bag of hundreds of GB. A profile sets
+`options.storage_preset`. Without it, `compression: zstd` records with `zstd_fast` and
+`compression: none` with `none` (earlier builds used `fastwrite`). The Storage preset list in
+the desktop window shows the preset of the selection and passes the chosen one as
+`Start.storage_preset`, which replaces the profile's preset until a profile or topics are selected
+again. `Status.storage_preset` returns the preset of the selection, and `summary.yaml` records
+the session's preset as `storage_preset`.
+
 ## Scripted profiles
 
-Existing `profiles/<name>.yaml` files and the `Select` and `Start` service APIs remain supported
-for scripts. A profile can combine `groups`, `add_groups`, `exclude_groups`, individual `topics`
-and `exclude`, and inherit another profile with `extends`. Abstract profiles cannot record.
-The desktop window does not list or edit profiles.
+`profiles/<name>.yaml` files are listed in the desktop window, and the `Select` and `Start`
+service APIs take them for scripts. A profile can combine `groups`, `add_groups`,
+`exclude_groups`, individual `topics` and `exclude`, and inherit another profile with `extends`.
+Abstract profiles cannot record and are not listed. Save profile in the window writes a profile
+with `name`, `topics` and `options: {start_mode: immediate}`, as the `SaveProfile` service does:
+
+```yaml
+name: lidar_only
+topics:
+  - /velodyne_packets
+options:
+  start_mode: immediate
+```
 
 Each recorded input is monitored on its own subscription.
 

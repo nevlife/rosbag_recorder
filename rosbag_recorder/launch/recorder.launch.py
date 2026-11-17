@@ -20,11 +20,10 @@ ARGUMENTS = {
     'label': (str, 'session label used by autostart'),
     'workspace': (str, 'workspace whose git state and parameter files are recorded'),
 }
-OUTPUTS = ('session', 'health', 'markers')
 
 
 def recorder(name='rosbag_recorder', overrides=None, **container):
-    """Return the container that runs one recorder; its topics are /<name>/<output>."""
+    """Return the container that runs one recorder; its services are /<name>/<service>."""
     share = Path(get_package_share_directory('rosbag_recorder'))
     node = ComposableNode(
         package='rosbag_recorder',
@@ -34,7 +33,6 @@ def recorder(name='rosbag_recorder', overrides=None, **container):
             str(share / 'config' / 'rosbag_recorder.param.yaml'),
             {'config_dir': str(share / 'config'), **(overrides or {})},
         ],
-        remappings=[(f'~/output/{topic}', f'/{name}/{topic}') for topic in OUTPUTS],
     )
     return ComposableNodeContainer(
         name=f'{name}_container',

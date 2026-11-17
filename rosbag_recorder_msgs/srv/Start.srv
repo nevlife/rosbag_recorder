@@ -3,6 +3,9 @@ string profile
 string label
 string notes
 bool force
+# MCAP storage preset (none, fastwrite, zstd_fast, zstd_small); empty keeps the profile's.
+# It stays on the selection until a profile or topics are selected again.
+string storage_preset
 ---
 bool success
 string message
