@@ -1,4 +1,4 @@
-"""Run the recorder in a Flux component container."""
+"""Run the recorder in a component container, a Flux one when it was built with Flux."""
 
 from pathlib import Path
 
@@ -25,6 +25,8 @@ ARGUMENTS = {
 def recorder(name='rosbag_recorder', overrides=None, **container):
     """Return the container that runs one recorder; its services are /<name>/<service>."""
     share = Path(get_package_share_directory('rosbag_recorder'))
+    # flux_components when the build had ENABLE_FLUX=1: an rclcpp executor delivers no Flux frame.
+    container_package = (share / 'container').read_text().strip()
     node = ComposableNode(
         package='rosbag_recorder',
         plugin='rosbag_recorder::RecorderNode',
@@ -37,7 +39,7 @@ def recorder(name='rosbag_recorder', overrides=None, **container):
     return ComposableNodeContainer(
         name=f'{name}_container',
         namespace='',
-        package='flux_components',
+        package=container_package,
         executable='component_container',
         composable_node_descriptions=[node],
         **container,

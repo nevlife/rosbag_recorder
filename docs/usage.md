@@ -8,9 +8,9 @@ rosbag_recorder
 
 The launcher starts a recorder if none is available in the current ROS domain, then opens RQT.
 It starts the recorder with `ros2 launch rosbag_recorder recorder.launch.py` and uses the
-installed catalog by default. The window lists discovered ROS topics and live Flux
-channels, grouped by the catalog's topic names. Missing selected Flux channels remain visible
-so that a publisher restart does not discard their selection.
+installed catalog by default. The window lists discovered ROS topics and, in a build with
+`ENABLE_FLUX=1`, live Flux channels, grouped by the catalog's topic names. Missing selected Flux
+channels remain visible so that a publisher restart does not discard their selection.
 
 1. Pick a profile in the Profile list, or check a category or individual topics. Picking a
    profile checks exactly its topics that are on the graph. Uncategorized inputs remain
@@ -58,7 +58,9 @@ They do not reconfigure an already running recorder. Recorder output is appended
 `recorder.launch.py` loads `config/rosbag_recorder.param.yaml` and overrides a parameter with
 each non-empty launch argument (`config_dir`, `output_dir`, `profile`, `autostart`, `label`,
 `workspace`). `config_dir` defaults to the installed `share/rosbag_recorder/config`.
-`respawn:=true` restarts the container when it exits.
+`respawn:=true` restarts the container when it exits. The container is the `component_container`
+of `flux_components` in a Flux build and of `rclcpp_components` otherwise; the build writes the
+package name to `share/rosbag_recorder/container`.
 
 The node publishes no topics. It writes the session channels into the bag only, on the bag
 topics below. Their prefix is the node name, `rosbag_recorder` in the launch file.
@@ -90,13 +92,21 @@ Health and session metadata continue to be stored in the bag, with `summary.yaml
 For each topic, `summary.yaml` gives the stored count from the closed bag as `written` and the
 messages that the writer cache lost as `dropped`. Raise `max_cache_mb` if `dropped` is not 0.
 Disk-space thresholds from the recording options still warn or stop recording.
+A recorder built without Flux rejects a `flux` selection with a message that says so.
 
 ## Flux bags
 
-Flux channel `NAME` is stored on bag topic `NAME/flux` as `flux_msgs/msg/FluxFrame`. The wrapper
-contains the original name, fingerprint, commit timestamp, raw frame bytes and slot/array metadata.
-The input's custom ROS type does not need to be installed for raw recording. Unknown fingerprints
-appear as `raw` in the list. Use `ros2 bag play_flux BAG` for Flux replay.
+Only a recorder built with `ENABLE_FLUX=1` records Flux. Flux channel `NAME` is stored on bag
+topic `NAME/flux` as `flux_msgs/msg/FluxFrame`. The wrapper contains the original name,
+fingerprint, commit timestamp, raw frame bytes and slot/array metadata. The input's custom ROS
+type does not need to be installed for raw recording. Unknown fingerprints appear as `raw` in the
+list. Use `ros2 bag play_flux BAG` for Flux replay.
+
+The frames are built by flux_bag's `FrameEncoder`, the code `ros2 bag record_flux` uses. A
+frame's aux bytes and the channel's `aux_size` go into the meta. Fields in the publisher's arena
+are copied into the recorded frame, which needs the type installed; a frame of a type that is not
+installed is not recorded, and the first one is logged.
 
 A ROS topic whose name already equals a selected Flux input's bag topic would collide; the
-selection service rejects that combination. CPU recording requires host-accessible payloads.
+selection service rejects that combination. A channel in GPU memory is recorded from the host
+copy that Flux gives the recorder's CPU subscription.

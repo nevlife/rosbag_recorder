@@ -20,10 +20,10 @@ TopicSelection topic(const std::string & name, const std::string & transport)
   return t;
 }
 
-std::string error(const std::vector<TopicSelection> & topics)
+std::string error(const std::vector<TopicSelection> & topics, bool with_flux = true)
 {
   try {
-    rosbag_recorder::check_selection(topics, {"/a", "/b/flux"}, {"/a", "/b"});
+    rosbag_recorder::check_selection(topics, {"/a", "/b/flux"}, {"/a", "/b"}, with_flux);
   } catch (const rosbag_recorder::ConfigError & e) {
     return e.what();
   }
@@ -45,4 +45,9 @@ TEST(Selection, Checks)
   EXPECT_EQ(error({topic("/b", "ros")}), "topic not available: /b");
   EXPECT_EQ(error({topic("/x", "flux")}), "topic not available: /x");
   EXPECT_EQ(error({topic("/b/flux", "ros"), topic("/b", "flux")}), "duplicate bag topic: /b/flux");
+  EXPECT_EQ(error({topic("/a", "ros")}, false), "");
+  EXPECT_EQ(
+    error({topic("/a", "ros"), topic("/b", "flux")}, false),
+    "transport flux is not available: rosbag_recorder was built without Flux "
+    "(ENABLE_FLUX=1 at build time enables it)");
 }

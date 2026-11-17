@@ -1,7 +1,7 @@
 #include "flux_input.hpp"
 
 #include <chrono>
-#include <cstring>
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -11,8 +11,10 @@ namespace rosbag_recorder
 
 FluxInput::FluxInput(rclcpp::Node & node, const std::string & topic, std::uint64_t fingerprint)
 : clock_(node.get_clock()),
+  logger_(node.get_logger()),
   topic_(topic),
   fingerprint_(fingerprint),
+  encoder_(topic, fingerprint),
   subscription_(
     node, topic, fingerprint, flux::QoS{}, [this](const flux::FrameView & view) { on_frame(view); })
 {
@@ -29,23 +31,19 @@ void FluxInput::on_frame(const flux::FrameView & view)
                       .count();
   const auto stamp =
     clock_->now().nanoseconds() - (mono - static_cast<std::int64_t>(view.publish_ns()));
-  flux_msgs::msg::FluxFrame frame;
-  frame.header.stamp = rclcpp::Time(stamp);
-  frame.flux_topic = topic_;
-  frame.fingerprint = fingerprint_;
-  frame.codec = "raw";
-  const auto * channel = subscription_.channel();
-  const std::uint32_t slots[] = {channel->slot_size(), channel->slot_count()};
-  const auto & meta = view.meta();
-  frame.meta.resize(10 + 8 * meta.ndim);
-  std::memcpy(frame.meta.data(), slots, sizeof(slots));
-  frame.meta[8] = meta.dtype;
-  frame.meta[9] = meta.ndim;
-  std::memcpy(frame.meta.data() + 10, meta.shape, 8 * meta.ndim);
-  const auto * data = static_cast<const std::uint8_t *>(view.data());
-  frame.data.assign(data, data + view.size());
-  auto bytes = std::make_shared<rclcpp::SerializedMessage>();
-  serialization_.serialize_message(&frame, bytes.get());
+  flux_bag::FluxFrameFields fields;
+  if (const char * why = encoder_.encode(view, subscription_, stamp, fields)) {
+    if (left_out_++ == 0) {
+      RCLCPP_WARN(
+        logger_, "%s: a frame with fields in its publisher's arena is not recorded: %s",
+        topic_.c_str(), why);
+    }
+    return;
+  }
+  const std::size_t n = flux_bag::FluxFrameCdr::size(fields);
+  auto bytes = std::make_shared<rclcpp::SerializedMessage>(n);
+  auto & out = bytes->get_rcl_serialized_message();
+  out.buffer_length = flux_bag::FluxFrameCdr::write(fields, out.buffer);
   callback_(std::move(bytes), stamp);
 }
 

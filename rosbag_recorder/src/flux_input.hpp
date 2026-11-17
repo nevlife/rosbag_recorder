@@ -2,10 +2,8 @@
 #define FLUX_INPUT_HPP_
 
 #include "flux/subscription.hpp"
+#include "flux_bag/frame_encoder.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "rclcpp/serialization.hpp"
-
-#include "flux_msgs/msg/flux_frame.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -17,8 +15,9 @@ namespace rosbag_recorder
 {
 
 // A Flux subscription in the node's default callback group that hands each frame on as a
-// serialized flux_msgs/msg/FluxFrame. Keep it as long as the node: a flux executor has no way
-// to drop a source, so destroying it while the node spins leaves the executor a dangling one.
+// serialized flux_msgs/msg/FluxFrame, in the form flux_bag stores and plays. Keep it as long as
+// the node: a flux executor has no way to drop a source, so destroying it while the node spins
+// leaves the executor a dangling one.
 class FluxInput
 {
 public:
@@ -33,10 +32,12 @@ private:
   void on_frame(const flux::FrameView & view);
 
   rclcpp::Clock::SharedPtr clock_;
+  rclcpp::Logger logger_;
   std::string topic_;
   std::uint64_t fingerprint_;
   Callback callback_;
-  rclcpp::Serialization<flux_msgs::msg::FluxFrame> serialization_;
+  flux_bag::FrameEncoder encoder_;
+  std::uint64_t left_out_ = 0;
   flux::Subscription subscription_;
 };
 

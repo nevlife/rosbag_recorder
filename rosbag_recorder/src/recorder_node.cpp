@@ -2,9 +2,6 @@
 #include "compat.hpp"
 #include "config.hpp"
 #include "disk_watch.hpp"
-#include "flux/schemas.hpp"
-#include "flux/topics.hpp"
-#include "flux_input.hpp"
 #include "preflight.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
@@ -36,6 +33,12 @@
 #include "rosbag_recorder_msgs/srv/status.hpp"
 #include "rosbag_recorder_msgs/srv/stop.hpp"
 #include "std_srvs/srv/trigger.hpp"
+
+#if ROSBAG_RECORDER_FLUX
+#include "flux/schemas.hpp"
+#include "flux/topics.hpp"
+#include "flux_input.hpp"
+#endif
 
 #include <chrono>
 #include <cmath>
@@ -227,24 +230,22 @@ private:
     if (graph_changed) {
       ros_topics_ = get_topic_names_and_types();
     }
+#if ROSBAG_RECORDER_FLUX
     flux_topics_.clear();
-    for (auto & topic : flux::enumerate_topics()) {
+    for (const auto & topic : flux::enumerate_topics()) {
       if (!topic.key_exact || topic.key.empty() || topic.key.front() != '/') {
         continue;
       }
       if (flux::read_channel_stats(topic.signpost).live) {
-        flux_topics_.emplace(topic.key, std::move(topic));
+        flux_topics_.emplace(topic.key, topic.fingerprint);
       }
     }
-  }
-
-  std::string flux_type(std::uint64_t fingerprint) const
-  {
-    return schemas_.contains(fingerprint) ? schemas_.at(fingerprint).ros_type() : "raw";
+#endif
   }
 
   void add_stream(
-    const std::string & name, const std::string & transport, std::uint64_t fingerprint = 0)
+    const std::string & name, const std::string & transport,
+    [[maybe_unused]] std::uint64_t fingerprint = 0)
   {
     const std::string bag = bag_name(name, transport);
     StreamSpec spec{bag, "", "", std::nullopt, false, false, false};
@@ -265,6 +266,7 @@ private:
     if (transport != "flux") {
       return;
     }
+#if ROSBAG_RECORDER_FLUX
     stream->publishers = flux_topics_.count(name) ? 1 : 0;
     stream->offers = {rclcpp::QoS(10)};
     auto & input = flux_subscriptions_[{name, fingerprint}];
@@ -275,7 +277,8 @@ private:
       [this, stream](std::shared_ptr<rclcpp::SerializedMessage> bytes, std::int64_t stamp) {
         on_data(*stream, std::move(bytes), stamp);
       });
-    flux_inputs_[bag] = input.get();
+    flux_inputs_[bag] = fingerprint;
+#endif
   }
 
   void on_topics(srv::ListTopics::Response & res)
@@ -299,15 +302,17 @@ private:
         topic.selected = streams_.count(name) && streams_.at(name)->spec.source.empty();
         res.topics.push_back(topic);
       }
-      for (const auto & [name, entry] : flux_topics_) {
-        res.topics.push_back(flux_topic(name, entry.fingerprint, 1));
+#if ROSBAG_RECORDER_FLUX
+      for (const auto & [name, fingerprint] : flux_topics_) {
+        res.topics.push_back(flux_topic(name, fingerprint, 1));
       }
-      for (const auto & [bag, input] : flux_inputs_) {
+      for (const auto & [bag, fingerprint] : flux_inputs_) {
         const auto name = bag.substr(0, bag.size() - 5);
         if (!flux_topics_.count(name)) {
-          res.topics.push_back(flux_topic(name, input->fingerprint(), 0));
+          res.topics.push_back(flux_topic(name, fingerprint, 0));
         }
       }
+#endif
       for (auto & topic : res.topics) {
         if (const auto * spec = catalog.topic(topic.name)) {
           topic.group = spec->group;
@@ -319,18 +324,20 @@ private:
     }
   }
 
+#if ROSBAG_RECORDER_FLUX
   msg::AvailableTopic flux_topic(
     const std::string & name, std::uint64_t fingerprint, std::uint32_t publishers) const
   {
     msg::AvailableTopic topic;
     topic.name = name;
     topic.transport = "flux";
-    topic.type = flux_type(fingerprint);
+    topic.type = schemas_.contains(fingerprint) ? schemas_.at(fingerprint).ros_type() : "raw";
     topic.fingerprint = fingerprint;
     topic.publishers = publishers;
     topic.selected = flux_inputs_.count(bag_name(name, "flux")) > 0;
     return topic;
   }
+#endif
 
   void on_set_topics(const srv::SetTopics::Request & req, srv::SetTopics::Response & res)
   {
@@ -345,17 +352,14 @@ private:
       for (const auto & kv : ros_topics_) {
         ros.insert(kv.first);
       }
-      std::map<std::string, std::uint64_t> fingerprints;
-      for (const auto & [name, topic] : flux_topics_) {
-        fingerprints[name] = topic.fingerprint;
-      }
-      for (const auto & [bag, input] : flux_inputs_) {
-        fingerprints.emplace(bag.substr(0, bag.size() - 5), input->fingerprint());
+      std::map<std::string, std::uint64_t> fingerprints = flux_topics_;
+      for (const auto & [bag, fingerprint] : flux_inputs_) {
+        fingerprints.emplace(bag.substr(0, bag.size() - 5), fingerprint);
       }
       for (const auto & kv : fingerprints) {
         flux.insert(kv.first);
       }
-      check_selection(req.topics, ros, flux);
+      check_selection(req.topics, ros, flux, ROSBAG_RECORDER_FLUX);
       unselect();
       catalog_ = std::move(catalog);
       profile_ = ResolvedProfile{};
@@ -404,9 +408,11 @@ private:
 
   void unselect()
   {
-    for (auto & [bag, input] : flux_inputs_) {
-      input->set_callback({});
+#if ROSBAG_RECORDER_FLUX
+    for (auto & [bag, fingerprint] : flux_inputs_) {
+      flux_subscriptions_.at({bag.substr(0, bag.size() - 5), fingerprint})->set_callback({});
     }
+#endif
     flux_inputs_.clear();
     streams_.clear();
     profile_.reset();
@@ -419,7 +425,7 @@ private:
   // Graph queries cost O(graph) each; they run when the graph changed, not every tick.
   void subscribe_pending(bool graph_changed)
   {
-    for (auto & [bag, input] : flux_inputs_) {
+    for (const auto & [bag, fingerprint] : flux_inputs_) {
       streams_.at(bag)->publishers = flux_topics_.count(bag.substr(0, bag.size() - 5)) ? 1 : 0;
     }
     if (!graph_changed) {
@@ -1026,13 +1032,16 @@ private:
   std::optional<Catalog> catalog_;
   std::optional<ResolvedProfile> profile_;
   std::map<std::string, std::shared_ptr<Stream>> streams_;
-  flux::Schemas schemas_;
-  std::map<std::string, flux::Topic> flux_topics_;
   std::map<std::string, std::vector<std::string>> ros_topics_;
+  // Live Flux channels and the selected Flux inputs (by bag topic), with their fingerprints. Both
+  // stay empty in a build without Flux.
+  std::map<std::string, std::uint64_t> flux_topics_;
+  std::map<std::string, std::uint64_t> flux_inputs_;
+#if ROSBAG_RECORDER_FLUX
+  flux::Schemas schemas_;
   // Every Flux subscription made so far, by topic and fingerprint; see FluxInput.
   std::map<std::pair<std::string, std::uint64_t>, std::unique_ptr<FluxInput>> flux_subscriptions_;
-  // The selected ones, by bag topic.
-  std::map<std::string, FluxInput *> flux_inputs_;
+#endif
 
   std::uint8_t state_{Health::IDLE};
   std::string message_;

@@ -8,8 +8,6 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 find_package(ament_cmake REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(flux_cpp REQUIRED)
-find_package(flux_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rmw REQUIRED)
@@ -22,6 +20,14 @@ find_package(std_srvs REQUIRED)
 find_package(tf2_msgs REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 find_package(yaml-cpp REQUIRED)
+
+# The build environment decides, as for flux_wrapper: package.xml declares the Flux dependencies
+# under the same condition, so colcon builds Flux first exactly when it is used.
+if("$ENV{ENABLE_FLUX}" STREQUAL "1")
+  set(ROSBAG_RECORDER_FLUX 1)
+else()
+  set(ROSBAG_RECORDER_FLUX 0)
+endif()
 
 add_library(${PROJECT_NAME}_core SHARED
   src/catalog_diff.cpp
@@ -41,13 +47,12 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC
   yaml-cpp
   OpenSSL::Crypto)
 
-add_library(${PROJECT_NAME}_component SHARED src/recorder_node.cpp src/flux_input.cpp)
+add_library(${PROJECT_NAME}_component SHARED src/recorder_node.cpp)
 target_compile_definitions(${PROJECT_NAME}_component PRIVATE
-  ROSBAG_RECORDER_ROSBAG2_MINOR=${rosbag2_cpp_VERSION_MINOR})
+  ROSBAG_RECORDER_ROSBAG2_MINOR=${rosbag2_cpp_VERSION_MINOR}
+  ROSBAG_RECORDER_FLUX=${ROSBAG_RECORDER_FLUX})
 target_link_libraries(${PROJECT_NAME}_component PUBLIC
   ${PROJECT_NAME}_core
-  flux_cpp::flux_cpp
-  ${flux_msgs_TARGETS}
   rclcpp_components::component
   rmw::rmw
   rosbag2_compression::rosbag2_compression
@@ -57,13 +62,30 @@ target_link_libraries(${PROJECT_NAME}_component PUBLIC
 if(rosbag2_cpp_VERSION VERSION_LESS 0.22)
   target_link_libraries(${PROJECT_NAME}_component PUBLIC rosbag2_transport::rosbag2_transport)
 endif()
-rclcpp_components_register_node(${PROJECT_NAME}_component
-  PLUGIN "rosbag_recorder::RecorderNode"
-  EXECUTABLE ${PROJECT_NAME}_node
-  EXECUTOR flux::Executor)
-# The generated main includes only rclcpp, and an rclcpp executor delivers no Flux frame.
-target_compile_options(${PROJECT_NAME}_node PRIVATE -include flux/executor.hpp)
-target_link_libraries(${PROJECT_NAME}_node flux_cpp::flux_cpp)
+if(ROSBAG_RECORDER_FLUX)
+  find_package(flux_bag REQUIRED)
+  find_package(flux_cpp REQUIRED)
+  target_sources(${PROJECT_NAME}_component PRIVATE src/flux_input.cpp)
+  target_link_libraries(${PROJECT_NAME}_component PUBLIC
+    flux_bag::flux_bag_frames
+    flux_cpp::flux_cpp)
+  rclcpp_components_register_node(${PROJECT_NAME}_component
+    PLUGIN "rosbag_recorder::RecorderNode"
+    EXECUTABLE ${PROJECT_NAME}_node
+    EXECUTOR flux::Executor)
+  # The generated main includes only rclcpp, and an rclcpp executor delivers no Flux frame.
+  target_compile_options(${PROJECT_NAME}_node PRIVATE -include flux/executor.hpp)
+  target_link_libraries(${PROJECT_NAME}_node flux_cpp::flux_cpp)
+  set(container_package flux_components)
+else()
+  rclcpp_components_register_node(${PROJECT_NAME}_component
+    PLUGIN "rosbag_recorder::RecorderNode"
+    EXECUTABLE ${PROJECT_NAME}_node)
+  set(container_package rclcpp_components)
+endif()
+# recorder.launch.py reads which package's component_container runs the node.
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/container "${container_package}\n")
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/container DESTINATION share/${PROJECT_NAME})
 
 install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_component
   ARCHIVE DESTINATION lib
@@ -104,9 +126,14 @@ if(BUILD_TESTING)
   add_launch_test(test/test_lifecycle.launch.py
     TIMEOUT 120
     ENV ROS_DOMAIN_ID=91 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
-  add_launch_test(test/test_selection.launch.py
-    TIMEOUT 120
-    ENV ROS_DOMAIN_ID=95 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
+  if(ROSBAG_RECORDER_FLUX)
+    add_launch_test(test/test_selection.launch.py
+      TIMEOUT 120
+      ENV ROS_DOMAIN_ID=95 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
+    add_launch_test(test/test_flux_frames.launch.py
+      TIMEOUT 120
+      ENV ROS_DOMAIN_ID=93 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST)
+  endif()
   add_launch_test(test/test_cache_drop.launch.py
     TIMEOUT 120
     ENV ROS_DOMAIN_ID=86 TEST_DATA_DIR=${CMAKE_CURRENT_SOURCE_DIR}/test/data)

@@ -12,6 +12,7 @@ The main checks are:
 | Test                                        | Behavior                                                                                                                                                                                                       |
 | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_selection.launch.py`                  | ROS and Flux with the same name, categories independent of type, unknown custom Flux fingerprints, byte and metadata preservation, publisher restart, pause/resume, selection changes rejected while recording |
+| `test_flux_frames.launch.py`                | Aux bytes and `aux_size`, fields in the publisher's arena, both in a channel in GPU memory, and a flux_wrapper `device="cuda"` Image publisher; the GPU cases are skipped without a CUDA device                |
 | `test_lifecycle.launch.py`                  | Profile changes, immediate stop, autostart validation, no automatic semantic IMU issues, QoS reconnection, profiles saved through `SaveProfile`                                                                |
 | `test_record.launch.py`                     | Large ROS messages, manual markers through the service API, split, and bag readback                                                                                                                            |
 | `test_cache_drop.launch.py`                 | A 1 MiB writer cache overflowed by 1 MiB messages; the `summary.yaml` counts match the bag                                                                                                                     |
@@ -22,7 +23,9 @@ The main checks are:
 Core gtests (`test_core`) cover profile resolution and saving, catalog parsing, rate calculation, preflight,
 the start modes, the disk watch, the summary, the catalog diff, topic selection and session
 metadata. The launch tests start the recorder through `recorder.launch.py`, so they use its
-container, parameter file and remaps. C++ and Python style checks run through the package linters.
+container, parameter file and remaps. `test_selection.launch.py` and `test_flux_frames.launch.py`
+are built only with `ENABLE_FLUX=1`; the other tests run in both builds. C++ and Python style
+checks run through the package linters.
 
 `test_scale.launch.py` retains the optional node timing benchmark. Run timing measurements on
 reserved cores. Its environment variables are defined in the test; no previous UI timings apply

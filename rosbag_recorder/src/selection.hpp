@@ -13,10 +13,12 @@ namespace rosbag_recorder
 // Flux input NAME is recorded on bag topic NAME/flux.
 std::string bag_name(const std::string & name, const std::string & transport);
 
-// Throws ConfigError on an unknown transport, a missing input or a bag topic used twice.
+// Throws ConfigError on an unknown transport, a Flux input in a build without Flux
+// (with_flux false), a missing input or a bag topic used twice.
 void check_selection(
   const std::vector<rosbag_recorder_msgs::msg::TopicSelection> & topics,
-  const std::set<std::string> & ros_available, const std::set<std::string> & flux_available);
+  const std::set<std::string> & ros_available, const std::set<std::string> & flux_available,
+  bool with_flux);
 
 }  // namespace rosbag_recorder
 

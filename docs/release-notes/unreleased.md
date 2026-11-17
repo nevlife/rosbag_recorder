@@ -18,12 +18,15 @@ Everything below is new since there is no release yet.
 - `Status.health` returns the last health report (rosbag_recorder_msgs)
 - Profile list and Save profile in the rqt window; the `SaveProfile` service writes the checked ROS topics as a profile in the recorder's config folder (rosbag_recorder, rosbag_recorder_msgs, rosbag_recorder_rqt)
 - Storage preset list in the rqt window; `Start.storage_preset` replaces the profile's MCAP preset, `Status.storage_preset` returns it, and `summary.yaml` records it as `storage_preset` (rosbag_recorder, rosbag_recorder_msgs, rosbag_recorder_rqt)
+- Flux is optional at build time: `ENABLE_FLUX=1` builds the Flux input, and a build without it records ROS topics in the `rclcpp_components` container and needs no Flux package (rosbag_recorder)
+- Record Flux channels in GPU memory from the host copy that Flux gives a CPU subscription (rosbag_recorder)
 
 ## Bugfixes
 
 - Build and test on Humble (rosbag_recorder)
 - Count stored messages in `summary.yaml` and report what the writer cache dropped (rosbag_recorder)
 - An MCAP profile without `storage_preset` and without compression records with the `none` preset instead of `fastwrite`: `none` writes chunks with a summary index, so a reader opens the bag without scanning it, and `fastwrite` wrote no index (rosbag_recorder)
+- Record a Flux frame's aux bytes and the fields in its publisher's arena, through flux_bag's `FrameEncoder`; they were left out of the bag (rosbag_recorder)
 
 ## Refactoring
 
@@ -42,4 +45,5 @@ Everything below is new since there is no release yet.
 
 - Node timing benchmark and a 500-topic checkbox consistency test
 - The launch test removes its bags
+- A launch test records a flux_wrapper `device="cuda"` Image publisher
 - README split into docs/; rosdoc2 configuration for the API reference; package CHANGELOG.rst files
